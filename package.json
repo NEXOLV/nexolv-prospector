@@ -5,6 +5,6 @@
   "type": "module",
   "description": "NEXOLV Prospector — trouve les entreprises sans site, prépare une démo et envoie la proposition",
   "dependencies": {
-    "@netlify/blobs": "^11.1.8"
+    "@netlify/blobs": "11.1.4"
   }
 }
