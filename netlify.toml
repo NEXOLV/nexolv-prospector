@@ -1,0 +1,12 @@
+[build]
+  publish = "public"
+  command = "echo 'Aucune compilation nécessaire'"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
