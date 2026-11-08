@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>NEXOLV Prospector</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--ink:#14162b;--mut:#6b7090;--line:#e4e6ef;--pri:#3b4fe0;--pri2:#eef0ff;--ok:#12a46a;--warn:#e08a00;--bad:#d64545;--r:12px}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+a{color:var(--pri)}button,input,select,textarea{font:inherit}
+.top{display:flex;align-items:center;gap:18px;padding:14px 24px;background:#14162b;color:#fff;flex-wrap:wrap}
+.top b{font-size:17px;letter-spacing:.3px}.top .sp{flex:1}.pill{background:rgba(255,255,255,.1);padding:5px 10px;border-radius:20px;font-size:12px}
+nav.tabs{display:flex;gap:4px;padding:0 24px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{border:0;background:none;padding:14px 14px;cursor:pointer;color:var(--mut);border-bottom:2px solid transparent;white-space:nowrap}
+nav.tabs button.on{color:var(--ink);border-color:var(--pri);font-weight:600}
+main{padding:22px 24px;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:17px}h3{margin:0 0 8px;font-size:15px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}.row>*{flex:1;min-width:160px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:4px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+textarea{resize:vertical}input[type=checkbox]{width:auto}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink)}
+.btn{border:0;background:var(--pri);color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap}
+.btn.sec{background:var(--pri2);color:var(--pri)}.btn.red{background:#fdecec;color:var(--bad)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.log{background:#0f1124;color:#cfd3ff;font:12px/1.6 ui-monospace,Consolas,monospace;padding:12px;border-radius:8px;max-height:260px;overflow:auto;white-space:pre-wrap;margin-top:12px}
+.log:empty{display:none}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--mut);font-weight:600;position:sticky;top:0;background:#fff;z-index:1}
+td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-size:13px}
+.tbl{max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:#eef0f5;color:#444}
+.tag.ok{background:#e3f7ee;color:var(--ok)}.tag.warn{background:#fff3df;color:var(--warn)}.tag.bad{background:#fdecec;color:var(--bad)}
+.links a{margin-right:8px;text-decoration:none;font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px}.kpi b{display:block;font-size:24px}.kpi span{color:var(--mut);font-size:12px}
+.split{display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:16px}@media(max-width:900px){.split{grid-template-columns:1fr}}
+.list{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:8px}.list label{display:flex;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--ink);font-size:13px;margin:0;cursor:pointer}
+.list label:hover{background:#f8f9ff}
+.mail{white-space:pre-wrap;background:#fafbff;border:1px solid var(--line);border-radius:8px;padding:14px;font-size:13.5px;line-height:1.55;max-height:50vh;overflow:auto}
+.note{font-size:12.5px;color:var(--mut);line-height:1.5}
+.hide{display:none!important}
+#login{position:fixed;inset:0;background:#14162b;display:flex;align-items:center;justify-content:center;z-index:50}
+#login form{background:#fff;padding:32px;border-radius:16px;width:min(360px,90vw)}
+#modal{position:fixed;inset:0;background:rgba(10,12,30,.5);display:flex;align-items:center;justify-content:center;z-index:40}
+#modal .box{background:#fff;border-radius:16px;padding:22px;width:min(560px,94vw);max-height:90vh;overflow:auto}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14162b;color:#fff;padding:10px 18px;border-radius:10px;z-index:60;max-width:90vw}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:600px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="login"><form id="loginForm">
+  <h2 style="margin-bottom:4px">🎯 NEXOLV Prospector</h2>
+  <p class="note" style="margin-top:0">Connexion</p>
+  <label>Mot de passe</label><input type="password" id="pw" autocomplete="current-password" required>
+  <p id="loginErr" style="color:var(--bad);font-size:13px"></p>
+  <button class="btn" style="width:100%">Se connecter</button>
+</form></div>
+
+<div class="top"><b>🎯 NEXOLV Prospector</b><span class="sp"></span>
+  <span class="pill" id="kG">Google</span><span class="pill" id="kP">Pappers</span><span class="pill" id="kB">Brevo</span>
+  <button class="btn sec" id="logout" style="padding:5px 10px">Déconnexion</button></div>
+<nav class="tabs" id="tabs">
+  <button data-t="search" class="on">1 · Rechercher</button>
+  <button data-t="prospects">2 · Prospects</button>
+  <button data-t="mails">3 · E-mails</button>
+  <button data-t="settings">⚙️ Réglages</button>
+</nav>
+
+<main>
+<div class="kpis" id="kpis"></div>
+
+<!-- ============ RECHERCHER ============ -->
+<section data-p="search">
+  <div class="card">
+    <div class="btns" style="margin-bottom:14px">
+      <button class="btn" id="srcG">Google Maps — sans site</button>
+      <button class="btn sec" id="srcP">Pappers — nouvelles entreprises</button>
+    </div>
+    <div id="formG">
+      <div class="row">
+        <div><label>Métiers (un par ligne)</label><textarea id="gMetiers" rows="6"></textarea></div>
+        <div><label>Villes (une par ligne)</label><textarea id="gVilles" rows="6"></textarea></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div><label>Profondeur</label><select id="gPages"><option value="1">20 résultats / recherche</option><option value="2" selected>40 résultats</option><option value="3">60 résultats (max)</option></select></div>
+        <div><label>Note Google minimum</label><input id="gNote" type="number" min="0" max="5" step="0.5" value="0"></div>
+        <div class="chk"><input type="checkbox" id="gRes" checked> Inclure ceux qui n'ont qu'un Facebook / Instagram</div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="chk"><input type="checkbox" id="gEnr" checked> Compléter avec SIRENE (dirigeant, SIREN, opposition)</div>
+        <div class="chk"><input type="checkbox" id="gDemo" checked> Publier la démo automatiquement</div>
+      </div>
+      <p class="note" id="gCost"></p>
+      <button class="btn" id="goG">Lancer la recherche</button>
+    </div>
+    <div id="formP" class="hide">
+      <div class="row">
+        <div><label>Département</label><input id="pDep" value="51"></div>
+        <div><label>Code(s) NAF (optionnel)</label><input id="pNaf" placeholder="43.22A, 96.02A"></div>
+        <div><label>Créées depuis le</label><input id="pDate" type="date"></div>
+        <div><label>Nombre max</label><input id="pMax" type="number" value="40" min="20" step="20"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="chk"><input type="checkbox" id="pVer" checked> Vérifier sur Google Maps qu'ils n'ont pas de site</div>
+        <div class="chk"><input type="checkbox" id="pDemo" checked> Publier la démo automatiquement</div>
+      </div>
+      <p class="note">Les entreprises récemment créées sont souvent les plus réceptives. Chaque page de 20 consomme des crédits Pappers.</p>
+      <button class="btn" id="goP">Lancer la recherche Pappers</button>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+</section>
+
+<!-- ============ PROSPECTS ============ -->
+<section data-p="prospects" class="hide">
+  <div class="card">
+    <div class="row" style="margin-bottom:12px">
+      <div><label>Rechercher</label><input id="fQ" placeholder="nom, ville, activité…"></div>
+      <div><label>Statut</label><select id="fS"><option value="">Tous</option></select></div>
+      <div><label>E-mail</label><select id="fE"><option value="">Tous</option><option value="1">Avec e-mail</option><option value="0">Sans e-mail</option></select></div>
+      <div><label>Démo</label><select id="fD"><option value="">Toutes</option><option value="1">Publiée</option><option value="0">Non publiée</option></select></div>
+    </div>
+    <div class="btns" style="margin-bottom:12px">
+      <button class="btn" id="bDemo">Publier la démo</button>
+      <button class="btn sec" id="bEnr">Compléter SIRENE</button>
+      <button class="btn sec" id="bCsv">Export CSV</button>
+      <button class="btn red" id="bDel">Supprimer</button>
+      <span class="note" id="selInfo" style="align-self:center"></span>
+    </div>
+    <p class="note">Renseignez l'e-mail directement dans le tableau (validation automatique). Les liens 🔎 aident à le trouver : Google, page Facebook/Instagram, Pappers.</p>
+    <div class="tbl"><table><thead><tr>
+      <th><input type="checkbox" id="all"></th><th>Entreprise</th><th>Contact</th><th style="min-width:210px">E-mail</th><th>Statut</th><th>Note</th><th>Démo</th><th>Trouver l'e-mail</th><th></th>
+    </tr></thead><tbody id="tb"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ============ E-MAILS ============ -->
+<section data-p="mails" class="hide">
+  <div class="split">
+    <div class="card">
+      <h2>Prêts à recevoir la proposition</h2>
+      <p class="note">E-mail renseigné, démo publiée, jamais contacté, pas d'opposition.</p>
+      <div class="btns" style="margin-bottom:8px"><button class="btn sec" id="mAll">Tout cocher</button><button class="btn sec" id="mNone">Tout décocher</button></div>
+      <div class="list" id="mList"></div>
+    </div>
+    <div class="card">
+      <h2>Aperçu</h2>
+      <div class="row"><div><label>Aperçu pour</label><select id="mPrev"></select></div></div>
+      <p style="margin:12px 0 6px"><b id="mSujet"></b></p>
+      <div class="mail" id="mBody"></div>
+      <div class="row" style="margin-top:14px">
+        <div><label>Envoyer un test à</label><input id="mTest"></div>
+        <div style="flex:0"><button class="btn sec" id="mTestBtn">Envoyer un test</button></div>
+      </div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <p class="note" id="mQuota"></p>
+      <div class="chk" style="margin-bottom:10px"><input type="checkbox" id="mOk"> J'ai relu le message et je confirme l'envoi</div>
+      <div class="btns"><button class="btn" id="mGo">Envoyer</button><button class="btn red hide" id="mStop">Arrêter</button></div>
+      <p class="note">Laissez cet onglet ouvert pendant l'envoi : une pause aléatoire sépare chaque message pour ne pas être classé en spam. Pour un envoi sans ordinateur allumé, activez le mode automatique dans les Réglages.</p>
+      <div class="log" id="mLog"></div>
+    </div>
+  </div>
+  <div class="split">
+    <div class="card">
+      <h2>Désinscriptions</h2>
+      <p class="note">Le lien « Ne plus recevoir de message » de chaque e-mail ajoute l'adresse ici automatiquement. Ajoutez à la main ceux qui répondent STOP.</p>
+      <div class="row"><div><input id="blIn" placeholder="adresse@exemple.fr"></div><div style="flex:0"><button class="btn sec" id="blBtn">Ajouter</button></div></div>
+      <p class="note" id="blList"></p>
+    </div>
+    <div class="card"><h2>Historique des envois</h2><div class="tbl" style="max-height:300px"><table><thead><tr><th>Date</th><th>Destinataire</th><th>Résultat</th></tr></thead><tbody id="hist"></tbody></table></div></div>
+  </div>
+</section>
+
+<!-- ============ RÉGLAGES ============ -->
+<section data-p="settings" class="hide">
+  <form id="cfgForm">
+  <div class="card">
+    <h2>Expéditeur</h2>
+    <div class="grid2">
+      <div><label>Nom de l'agence</label><input name="agence_nom"></div>
+      <div><label>Nom d'expéditeur</label><input name="expediteur_nom"></div>
+      <div><label>Adresse d'expéditeur (validée dans Brevo)</label><input name="expediteur_email"></div>
+      <div><label>Adresse de réponse</label><input name="reply_to"></div>
+      <div><label>Téléphone affiché</label><input name="signature_tel"></div>
+      <div><label>Votre site</label><input name="signature_site"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Modèle d'e-mail</h2>
+    <p class="note">Variables : {bonjour} {nom} {ville} {activite} {lien} {phrase_note} {phrase_prix} {tel_agence} {signature}. Les mentions légales et le lien de désinscription sont ajoutés automatiquement en bas de chaque message.</p>
+    <label>Objet</label><input name="email_sujet">
+    <label style="margin-top:10px">Corps</label><textarea name="email_corps" rows="16"></textarea>
+    <div class="grid2" style="margin-top:10px">
+      <div><label>Signature</label><textarea name="signature" rows="4"></textarea></div>
+      <div><label>Tarif affiché (vide = pas de tarif dans l'e-mail)</label><input name="offre_prix" placeholder="ex. 490 € ou 39 €/mois"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Rythme d'envoi</h2>
+    <div class="grid2">
+      <div><label>Quota d'e-mails par jour</label><input name="quota_jour" type="number" min="1" max="300"></div>
+      <div></div>
+      <div><label>Pause minimum entre deux envois (secondes)</label><input name="delai_min_s" type="number" min="0"></div>
+      <div><label>Pause maximum (secondes)</label><input name="delai_max_s" type="number" min="0"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Mode automatique</h2>
+    <p class="note">Du lundi au vendredi, de 9 h à 18 h. Chaque jour, une nouvelle recherche (un métier × une ville, à tour de rôle) ajoute des prospects et publie leurs démos. Chaque heure, quelques e-mails partent vers les prospects prêts. Tout tourne sur Netlify, même ordinateur éteint.</p>
+    <div class="grid2">
+      <div><label>Métiers</label><textarea name="auto_metiers" rows="5"></textarea></div>
+      <div><label>Villes</label><textarea name="auto_villes" rows="5"></textarea></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="chk"><input type="checkbox" name="auto_recherche"> Recherche automatique quotidienne</div>
+      <div class="chk"><input type="checkbox" name="auto_envoi"> Envoi automatique des e-mails</div>
+      <div><label>E-mails par heure (mode auto)</label><input name="auto_envois_par_heure" type="number" min="1" max="10"></div>
+    </div>
+    <p class="note">Les e-mails ne partent qu'aux prospects dont vous avez renseigné l'adresse : vous gardez la main sur qui est contacté.</p>
+  </div>
+  <div class="btns"><button class="btn">Enregistrer les réglages</button></div>
+  </form>
+  <div class="card" style="margin-top:16px">
+    <h2>Clés d'accès</h2>
+    <p class="note">Pour la sécurité, les clés ne se saisissent pas ici. Elles se règlent sur Netlify : <b>Site configuration → Environment variables</b>. Il faut ensuite relancer un déploiement.<br>
+    <code>APP_PASSWORD</code> mot de passe de l'appli · <code>GOOGLE_API_KEY</code> Google Places API (New) · <code>BREVO_API_KEY</code> envoi des e-mails · <code>PAPPERS_API_KEY</code> optionnel</p>
+  </div>
+</section>
+</main>
+
+<div id="modal" class="hide"><div class="box"><h2>Modifier le prospect</h2><form id="editForm">
+  <div class="grid2">
+    <div><label>Nom affiché sur la démo</label><input name="nom"></div>
+    <div><label>Activité</label><input name="activite"></div>
+    <div><label>Thème de la démo</label><select name="secteur"><option value="btp">Bâtiment</option><option value="coiffure">Coiffure / beauté</option><option value="restauration">Restauration</option><option value="transport">Transport / auto</option><option value="services">Services</option></select></div>
+    <div><label>Dirigeant</label><input name="dirigeant"></div>
+    <div><label>Téléphone</label><input name="telephone"></div>
+    <div><label>Ville</label><input name="ville"></div>
+  </div>
+  <label style="margin-top:10px">Adresse</label><input name="adresse">
+  <label style="margin-top:10px">Notes</label><textarea name="notes" rows="3"></textarea>
+  <div class="btns" style="margin-top:14px"><button class="btn">Enregistrer</button><button type="button" class="btn sec" id="mClose">Annuler</button></div>
+</form></div></div>
+<div id="toast" class="hide"></div>
+
+<script>
+const $ = (s) => document.querySelector(s), $$ = (s) => [...document.querySelectorAll(s)];
+let TOKEN = ""; try { TOKEN = localStorage.getItem("nx_token") || ""; } catch {}
+let S = { prospects: [], config: {}, blacklist: [], envois: [], statuts: [], cles: {} };
+const sel = new Set();
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function toast(m, ms = 3500) { const t = $("#toast"); t.textContent = m; t.classList.remove("hide"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hide"), ms); }
+
+async function api(route, body) {
+  const r = await fetch("/api/" + route, {
+    method: body ? "POST" : "GET",
+    headers: { "content-type": "application/json", authorization: "Bearer " + TOKEN },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401 && route !== "login") { showLogin(); throw new Error("Session expirée"); }
+  const ct = r.headers.get("content-type") || "";
+  const d = ct.includes("json") ? await r.json() : await r.blob();
+  if (!r.ok) throw new Error(d.error || ("Erreur " + r.status));
+  return d;
+}
+
+// ---------- connexion ----------
+function showLogin() { $("#login").classList.remove("hide"); setTimeout(() => $("#pw").focus(), 50); }
+$("#loginForm").onsubmit = async (e) => {
+  e.preventDefault(); $("#loginErr").textContent = "";
+  try {
+    const d = await api("login", { password: $("#pw").value });
+    TOKEN = d.token; try { localStorage.setItem("nx_token", TOKEN); } catch {}
+    $("#login").classList.add("hide"); $("#pw").value = ""; await load(true);
+  } catch (err) { $("#loginErr").textContent = err.message; }
+};
+$("#logout").onclick = () => { TOKEN = ""; try { localStorage.removeItem("nx_token"); } catch {} showLogin(); };
+
+// ---------- onglets ----------
+$$("#tabs button").forEach((b) => b.onclick = () => {
+  $$("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  $$("main section").forEach((s) => s.classList.toggle("hide", s.dataset.p !== b.dataset.t));
+  if (b.dataset.t === "mails") renderMails();
+});
+
+// ---------- chargement ----------
+async function load(first) {
+  S = await api("state");
+  const k = (id, on, lab) => { $(id).textContent = (on ? "✅ " : "⚠️ ") + lab; };
+  k("#kG", S.cles.google, "Google"); k("#kP", S.cles.pappers, "Pappers"); k("#kB", S.cles.brevo, "Brevo");
+  if (first) {
+    $("#gMetiers").value = S.config.auto_metiers; $("#gVilles").value = S.config.auto_villes;
+    $("#mTest").value = S.config.reply_to; fillCfg();
+    $("#fS").innerHTML = '<option value="">Tous</option>' + S.statuts.map((s) => `<option>${s}</option>`).join("");
+  }
+  renderKpis(); renderTable(); renderMails(); costInfo();
+}
+function renderKpis() {
+  const P = S.prospects;
+  const n = (f) => P.filter(f).length;
+  $("#kpis").innerHTML = [
+    [P.length, "prospects"], [n((p) => p.email), "avec e-mail"], [n((p) => p.site_slug), "démos publiées"],
+    [n((p) => ["envoye", "repondu", "client", "pas_interesse"].includes(p.statut)), "contactés"],
+    [n((p) => p.statut === "repondu" || p.statut === "client"), "réponses / clients"],
+    [`${S.envoisDuJour}/${S.config.quota_jour}`, "envois aujourd'hui"],
+  ].map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+// ---------- recherche ----------
+const log = (m) => { const l = $("#log"); l.textContent += m + "\n"; l.scrollTop = 1e9; };
+$("#srcG").onclick = () => { $("#formG").classList.remove("hide"); $("#formP").classList.add("hide"); $("#srcG").classList.remove("sec"); $("#srcP").classList.add("sec"); };
+$("#srcP").onclick = () => { $("#formP").classList.remove("hide"); $("#formG").classList.add("hide"); $("#srcP").classList.remove("sec"); $("#srcG").classList.add("sec"); };
+const lines = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+function costInfo() {
+  const n = lines($("#gMetiers").value).length * lines($("#gVilles").value).length;
+  $("#gCost").textContent = `${n} recherche(s), soit jusqu'à ${n * +$("#gPages").value} requêtes Google facturées. Vérifiez votre quota gratuit dans Google Cloud.`;
+}
+["#gMetiers", "#gVilles", "#gPages"].forEach((s) => $(s).addEventListener("input", costInfo));
+{ const d = new Date(); d.setMonth(d.getMonth() - 3); $("#pDate").value = d.toISOString().slice(0, 10); }
+
+async function postTraitement(ids, enrich, demo) {
+  if (enrich && ids.length) {
+    log(`🧾 Complément SIRENE pour ${ids.length} prospect(s)…`);
+    for (const id of ids) { try { await api("enrich", { id }); } catch (e) { log("   ⚠️ " + e.message); } }
+  }
+  if (demo && ids.length) { const r = await api("generate", { ids }); log(`🌐 ${r.n} démo(s) publiée(s)`); }
+}
+$("#goG").onclick = async () => {
+  const btn = $("#goG"); btn.disabled = true; $("#log").textContent = "";
+  const metiers = lines($("#gMetiers").value), villes = lines($("#gVilles").value);
+  let tot = { a: 0, s: 0, n: [] };
+  try {
+    for (const v of villes) for (const m of metiers) {
+      log(`🔎 ${m} — ${v}`);
+      try {
+        const r = await api("search", { metier: m, ville: v, pages: +$("#gPages").value, reseaux: $("#gRes").checked, noteMin: +$("#gNote").value || 0 });
+        log(`   ${r.analysees} fiches · ${r.sansSite} sans site · ${r.nouveaux.length} nouveaux`);
+        tot.a += r.analysees; tot.s += r.sansSite; tot.n.push(...r.nouveaux);
+      } catch (e) { log("   ❌ " + e.message); }
+    }
+    await postTraitement(tot.n, $("#gEnr").checked, $("#gDemo").checked);
+    log(`\n✅ Terminé : ${tot.a} fiches analysées, ${tot.s} sans site, ${tot.n.length} nouveaux prospects.`);
+    await load();
+  } finally { btn.disabled = false; }
+};
+$("#goP").onclick = async () => {
+  const btn = $("#goP"); btn.disabled = true; $("#log").textContent = "";
+  const [y, mo, d] = $("#pDate").value.split("-");
+  const ids = [];
+  try {
+    for (let page = 1; page <= Math.ceil(+$("#pMax").value / 20); page++) {
+      const r = await api("pappers", { departement: $("#pDep").value.trim(), code_naf: $("#pNaf").value.replace(/\s/g, ""), date_creation_min: d ? `${d}-${mo}-${y}` : "", page });
+      log(`📄 Page ${page} : ${r.recus} entreprises, ${r.nouveaux.length} nouvelles`); ids.push(...r.nouveaux);
+      if (r.recus < 20) break;
+    }
+    let gard = ids;
+    if ($("#pVer").checked && S.cles.google) {
+      log(`🔎 Vérification Google Maps de ${ids.length} entreprise(s)…`); gard = [];
+      for (const id of ids) { try { const r = await api("verify", { id }); if (!r.supprime) gard.push(id); } catch (e) { log("   ⚠️ " + e.message); gard.push(id); } }
+      log(`   ${ids.length - gard.length} retirée(s) car elles ont déjà un site`);
+    }
+    await postTraitement(gard, false, $("#pDemo").checked);
+    log(`\n✅ Terminé : ${gard.length} nouveaux prospects.`); await load();
+  } catch (e) { log("❌ " + e.message); } finally { btn.disabled = false; }
+};
+
+// ---------- prospects ----------
+function filtered() {
+  const q = $("#fQ").value.toLowerCase(), s = $("#fS").value, e = $("#fE").value, d = $("#fD").value;
+  return S.prospects.filter((p) =>
+    (!q || [p.nom, p.ville, p.activite, p.email, p.dirigeant].join(" ").toLowerCase().includes(q)) &&
+    (!s || p.statut === s) && (!e || (!!p.email) === (e === "1")) && (!d || (!!p.site_slug) === (d === "1")));
+}
+const statTag = (s) => { const c = { en_ligne: "", envoye: "warn", repondu: "ok", client: "ok", stop: "bad", pas_interesse: "bad" }[s] ?? ""; return c; };
+function renderTable() {
+  const rows = filtered();
+  $("#tb").innerHTML = rows.map((p) => {
+    const reseau = (p.site_existant || "").startsWith("reseau:") ? p.site_existant.slice(7) : "";
+    const g = "https://www.google.com/search?q=" + encodeURIComponent(`"${p.nom}" ${p.ville || ""} email OR contact OR @`);
+    const pap = "https://www.pappers.fr/recherche?q=" + encodeURIComponent(p.siren || p.nom);
+    return `<tr data-id="${esc(p.id)}">
+      <td><input type="checkbox" class="ck" ${sel.has(p.id) ? "checked" : ""}></td>
+      <td><b>${esc(p.nom)}</b>${p.opposition ? ' <span class="tag bad">opposé prospection</span>' : ""}<div class="sub">${esc(p.activite)} · ${esc(p.ville)}</div></td>
+      <td>${p.telephone ? `<a href="tel:${esc(p.telephone.replace(/\s/g, ""))}">${esc(p.telephone)}</a>` : '<span class="sub">—</span>'}<div class="sub">${esc(p.dirigeant || "")}</div></td>
+      <td><input class="em" value="${esc(p.email || "")}" placeholder="à compléter"></td>
+      <td><select class="st">${S.statuts.map((s) => `<option ${s === p.statut ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+      <td>${p.note ? `★ ${Number(p.note).toFixed(1).replace(".", ",")}<div class="sub">${p.nb_avis} avis</div>` : '<span class="sub">—</span>'}</td>
+      <td>${p.site_url ? `<a href="${esc(p.site_url)}" target="_blank" rel="noopener">voir ↗</a>` : '<span class="sub">—</span>'}</td>
+      <td class="links"><a href="${g}" target="_blank" rel="noopener" title="Recherche Google">🔎 Google</a>${reseau ? `<a href="${esc(reseau)}" target="_blank" rel="noopener">📱 Réseau</a>` : ""}${p.maps_url ? `<a href="${esc(p.maps_url)}" target="_blank" rel="noopener">📍 Maps</a>` : ""}<a href="${pap}" target="_blank" rel="noopener">🏢 Pappers</a></td>
+      <td><button class="btn sec ed" style="padding:4px 9px">✎</button></td></tr>`;
+  }).join("") || `<tr><td colspan="9" class="sub" style="padding:30px;text-align:center">Aucun prospect. Lancez une recherche dans l'onglet 1.</td></tr>`;
+  $("#selInfo").textContent = sel.size ? `${sel.size} sélectionné(s)` : `${rows.length} prospect(s) affiché(s) — cochez pour agir`;
+}
+["#fQ", "#fS", "#fE", "#fD"].forEach((s) => $(s).addEventListener("input", renderTable));
+const pOf = (id) => S.prospects.find((p) => p.id === id);
+$("#tb").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr"); if (!tr) return; const id = tr.dataset.id;
+  if (e.target.classList.contains("ck")) { e.target.checked ? sel.add(id) : sel.delete(id); renderTable(); return; }
+  const fields = e.target.classList.contains("em") ? { email: e.target.value } : e.target.classList.contains("st") ? { statut: e.target.value } : null;
+  if (!fields) return;
+  try { const r = await api("update", { id, fields }); Object.assign(pOf(id), r.prospect); toast("Enregistré"); renderKpis(); }
+  catch (err) { toast("⚠️ " + err.message, 5000); e.target.style.borderColor = "var(--bad)"; }
+});
+$("#tb").addEventListener("click", (e) => { if (e.target.classList.contains("ed")) openEdit(e.target.closest("tr").dataset.id); });
+$("#all").onchange = (e) => { filtered().forEach((p) => e.target.checked ? sel.add(p.id) : sel.delete(p.id)); renderTable(); };
+$("#bDemo").onclick = async () => { if (!sel.size) return toast("Cochez des prospects"); const r = await api("generate", { ids: [...sel] }); toast(`${r.n} démo(s) publiée(s)`); sel.clear(); load(); };
+$("#bEnr").onclick = async () => {
+  if (!sel.size) return toast("Cochez des prospects"); const ids = [...sel]; let i = 0;
+  for (const id of ids) { toast(`SIRENE ${++i}/${ids.length}…`, 60000); try { await api("enrich", { id }); } catch {} }
+  toast("Terminé"); sel.clear(); load();
+};
+$("#bDel").onclick = async () => {
+  if (!sel.size) return toast("Cochez des prospects");
+  const b = $("#bDel"); if (!b.dataset.c) { b.dataset.c = 1; b.textContent = `Confirmer la suppression (${sel.size})`; setTimeout(() => { delete b.dataset.c; b.textContent = "Supprimer"; }, 4000); return; }
+  delete b.dataset.c; b.textContent = "Supprimer"; await api("delete", { ids: [...sel] }); sel.clear(); load();
+};
+$("#bCsv").onclick = async () => {
+  const blob = await api("export"); const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "prospects-nexolv.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+let editId = null;
+function openEdit(id) {
+  editId = id; const p = pOf(id), f = $("#editForm");
+  for (const el of f.elements) if (el.name) el.value = p[el.name] ?? "";
+  $("#modal").classList.remove("hide");
+}
+$("#mClose").onclick = () => $("#modal").classList.add("hide");
+$("#editForm").onsubmit = async (e) => {
+  e.preventDefault(); const fields = {};
+  for (const el of e.target.elements) if (el.name) fields[el.name] = el.value;
+  const r = await api("update", { id: editId, fields }); Object.assign(pOf(editId), r.prospect);
+  $("#modal").classList.add("hide"); renderTable(); toast("Enregistré");
+};
+
+// ---------- e-mails ----------
+const mSel = new Set(), mSeen = new Set();
+function envoyables() {
+  const bl = new Set(S.blacklist);
+  return S.prospects.filter((p) => p.email && !bl.has(p.email.toLowerCase()) && !p.opposition && p.statut === "en_ligne" && p.site_url);
+}
+function renderMails() {
+  const E = envoyables();
+  for (const p of E) if (!mSeen.has(p.id)) { mSeen.add(p.id); if (mSel.size < (+S.config.quota_jour || 30)) mSel.add(p.id); }
+  for (const id of [...mSel]) if (!E.some((p) => p.id === id)) mSel.delete(id);
+  $("#mList").innerHTML = E.map((p) => `<label><input type="checkbox" data-id="${esc(p.id)}" ${mSel.has(p.id) ? "checked" : ""}><span><b>${esc(p.nom)}</b><br><span class="note">${esc(p.email)} · ${esc(p.ville)}</span></span></label>`).join("")
+    || `<p class="note" style="padding:12px">Personne n'est prêt. Il faut un e-mail (onglet 2) et une démo publiée.</p>`;
+  const cur = $("#mPrev").value;
+  $("#mPrev").innerHTML = E.map((p) => `<option value="${esc(p.id)}">${esc(p.nom)}</option>`).join("");
+  if (E.some((p) => p.id === cur)) $("#mPrev").value = cur;
+  preview();
+  const reste = Math.max(0, S.config.quota_jour - S.envoisDuJour);
+  $("#mQuota").textContent = `${mSel.size} sélectionné(s) · quota restant aujourd'hui : ${reste} · pause ${S.config.delai_min_s}–${S.config.delai_max_s} s entre deux envois.`;
+  $("#blList").textContent = S.blacklist.length ? S.blacklist.join(", ") : "Aucune désinscription.";
+  $("#hist").innerHTML = S.envois.map((e) => `<tr><td>${new Date(e.date).toLocaleString("fr-FR")}</td><td>${esc(e.to)}</td><td>${e.ok ? `<span class="tag ok">${e.test ? "test" : "envoyé"}</span>` : `<span class="tag bad" title="${esc(e.erreur)}">erreur</span>`}</td></tr>`).join("") || `<tr><td colspan="3" class="note">Aucun envoi.</td></tr>`;
+}
+$("#mList").addEventListener("change", (e) => { const id = e.target.dataset.id; e.target.checked ? mSel.add(id) : mSel.delete(id); renderMails(); });
+$("#mAll").onclick = () => { envoyables().forEach((p) => mSel.add(p.id)); renderMails(); };
+$("#mNone").onclick = () => { mSel.clear(); renderMails(); };
+$("#mPrev").onchange = preview;
+async function preview() {
+  const id = $("#mPrev").value; if (!id) { $("#mSujet").textContent = ""; $("#mBody").textContent = ""; return; }
+  try { const m = await api("preview-email", { id }); $("#mSujet").textContent = "Objet : " + m.sujet; $("#mBody").textContent = m.texte; } catch {}
+}
+$("#mTestBtn").onclick = async () => {
+  const id = $("#mPrev").value; if (!id) return toast("Aucun prospect à prévisualiser");
+  try { await api("send", { id, test: $("#mTest").value.trim() }); toast("✅ Test envoyé à " + $("#mTest").value); load(); } catch (e) { toast("❌ " + e.message, 6000); }
+};
+let stopFlag = false;
+$("#mStop").onclick = () => { stopFlag = true; };
+$("#mGo").onclick = async () => {
+  if (!$("#mOk").checked) return toast("Cochez la confirmation après avoir relu le message");
+  const ids = envoyables().filter((p) => mSel.has(p.id)).map((p) => p.id);
+  if (!ids.length) return toast("Aucun destinataire sélectionné");
+  stopFlag = false; $("#mGo").disabled = true; $("#mStop").classList.remove("hide");
+  const L = $("#mLog"); L.textContent = ""; const lg = (m) => { L.textContent += m + "\n"; L.scrollTop = 1e9; };
+  let ok = 0;
+  try {
+    for (let i = 0; i < ids.length && !stopFlag; i++) {
+      const p = pOf(ids[i]);
+      try {
+        const r = await api("send", { id: p.id });
+        if (r.ok) { ok++; lg(`✅ ${p.nom} → ${p.email}`); p.statut = "envoye"; } else { lg(`❌ ${p.nom} : ${r.erreur}`); if (/quota/i.test(r.erreur)) break; }
+      } catch (e) { lg(`❌ ${p.nom} : ${e.message}`); }
+      if (i < ids.length - 1 && !stopFlag) {
+        let d = Math.round(S.config.delai_min_s + Math.random() * (S.config.delai_max_s - S.config.delai_min_s));
+        while (d > 0 && !stopFlag) { $("#mGo").textContent = `Prochain envoi dans ${d} s…`; await sleep(1000); d--; }
+      }
+    }
+  } finally {
+    lg(`\nTerminé : ${ok} envoyé(s).`); $("#mGo").disabled = false; $("#mGo").textContent = "Envoyer"; $("#mStop").classList.add("hide"); $("#mOk").checked = false; load();
+  }
+};
+$("#blBtn").onclick = async () => { const e = $("#blIn").value.trim(); if (!e) return; await api("blacklist", { email: e }); $("#blIn").value = ""; toast("Ajouté"); load(); };
+
+// ---------- réglages ----------
+function fillCfg() {
+  for (const el of $("#cfgForm").elements) if (el.name && el.name in S.config) {
+    if (el.type === "checkbox") el.checked = !!S.config[el.name]; else el.value = S.config[el.name];
+  }
+}
+$("#cfgForm").onsubmit = async (e) => {
+  e.preventDefault(); const c = {};
+  for (const el of e.target.elements) if (el.name) c[el.name] = el.type === "checkbox" ? el.checked : el.type === "number" ? +el.value : el.value;
+  if (c.delai_max_s < c.delai_min_s) c.delai_max_s = c.delai_min_s;
+  const r = await api("config", { config: c }); S.config = r.config; toast("✅ Réglages enregistrés"); renderMails();
+};
+
+// ---------- démarrage ----------
+if (TOKEN) load(true).then(() => $("#login").classList.add("hide")).catch(() => showLogin()); else showLogin();
+</script>
+</body>
+</html>
