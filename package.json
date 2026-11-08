@@ -1,0 +1,10 @@
+{
+  "name": "nexolv-prospector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "NEXOLV Prospector — trouve les entreprises sans site, prépare une démo et envoie la proposition",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.8"
+  }
+}
