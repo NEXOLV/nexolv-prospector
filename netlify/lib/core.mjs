@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import dns from "node:dns/promises";
 import { getStore } from "@netlify/blobs";
+import { emailHtml } from "./emailhtml.mjs";
 
 export const env = (k) => process.env[k] || "";
 
@@ -354,13 +355,7 @@ export function renderEmail(p, cfg, base) {
   const stop = p.email ? `${base}/api/stop?e=${encodeURIComponent(p.email)}&s=${stopSig(p.email)}` : "";
   const mentions = `—\n${cfg.agence_nom} · ${cfg.expediteur_email}\nVos coordonnées professionnelles proviennent de sources publiques (fiche Google, registre des entreprises) et ne sont utilisées que pour cette proposition.\nPour ne plus recevoir de message : ${stop || "répondez « STOP »"}`;
   const texte = `${corps}\n\n${mentions}`;
-  let h = esc(corps);
-  if (v.lien.startsWith("http")) h = h.split(esc(v.lien)).join(`<a href="${esc(v.lien)}">${esc(v.lien)}</a>`);
-  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#222">${h.replace(/\n/g, "<br>")}`
-    + `<p style="font-size:12px;color:#888;margin-top:24px">—<br>${esc(cfg.agence_nom)} · ${esc(cfg.expediteur_email)}<br>`
-    + `Vos coordonnées professionnelles proviennent de sources publiques (fiche Google, registre des entreprises) et ne sont utilisées que pour cette proposition.<br>`
-    + (stop ? `<a href="${esc(stop)}" style="color:#888">Ne plus recevoir de message</a>` : "Pour ne plus recevoir de message, répondez « STOP ».")
-    + `</p></div>`;
+  const html = emailHtml({ corps, v, cfg, stop });
   return { sujet, texte, html, stop };
 }
 
