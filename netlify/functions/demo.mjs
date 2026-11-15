@@ -1,5 +1,6 @@
 // Sites de démonstration publics : /demo/<slug>
 import * as C from "../lib/core.mjs";
+import { siteHtml } from "../lib/sitehtml.mjs";
 
 export const config = { path: "/demo/*" };
 
@@ -11,7 +12,7 @@ export default async (req) => {
     return C.page(`<!DOCTYPE html><meta charset="utf-8"><title>Page introuvable</title>
 <body style="font-family:sans-serif;text-align:center;padding:80px"><h1>Cette page n'existe plus</h1><p><a href="https://nexolv.fr">nexolv.fr</a></p></body>`, 404);
   }
-  const res = C.page(C.renderSite(p, C.cfgOf(db)));
+  const res = C.page(siteHtml(p, C.cfgOf(db), C.SECTEURS[p.secteur] || C.SECTEURS.services, C.SECTEURS[p.secteur] ? p.secteur : "services"));
   res.headers.set("x-robots-tag", "noindex, nofollow");
   return res;
 };
