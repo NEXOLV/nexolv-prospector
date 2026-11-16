@@ -1,4 +1,4 @@
-// Gabarit "futuriste" des sites de démonstration (/demo/<slug>)
+// Gabarit "chic & épuré" des sites de démonstration (/demo/<slug>)
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const noteFr = (n) => Number(n).toFixed(1).replace(".", ",");
@@ -52,6 +52,21 @@ const ETAPES = {
   services: [["Premier contact", "Vous nous exposez votre besoin."], ["Proposition claire", "Une solution adaptée et un tarif transparent."], ["Suivi", "Nous restons disponibles après la prestation."]],
 };
 
+// Formules (prix HT) — liens de paiement Stripe dans les variables Netlify PAY_ESSENTIEL / PAY_SANS_APPORT / PAY_PRO
+const FORMULES = [
+  { k: "PAY_ESSENTIEL", nom: "Essentiel", prix: "390 €", unite: "HT", mois: "+ 15 € HT / mois", items: ["Ce site mis en ligne à votre nom", "Nom de domaine & hébergement inclus", "Vos photos et vos textes"] },
+  { k: "PAY_PRO", nom: "Pro", prix: "690 €", unite: "HT", mois: "+ 29 € HT / mois", top: true, items: ["Site 5 pages", "Formulaire de demande de devis", "Fiche Google Business optimisée", "2 modifications par mois"] },
+  { k: "PAY_SANS_APPORT", nom: "Sans apport", prix: "0 €", unite: "de création", mois: "39 € HT / mois · engagement 12 mois", items: ["Le même site, réglé au mois", "Nom de domaine & hébergement inclus", "Aucun frais au démarrage"] },
+];
+const lienPaiement = (k, p) => {
+  const base = (typeof process !== "undefined" && process.env && process.env[k]) || "";
+  if (!/^https:\/\/(buy|checkout)\.stripe\.com\//.test(base)) return "";
+  const u = new URL(base);
+  if (p.site_slug) u.searchParams.set("client_reference_id", String(p.site_slug).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 200));
+  if (p.email) u.searchParams.set("prefilled_email", p.email);
+  return u.toString();
+};
+
 export function siteHtml(p, cfg, th, secteur) {
   const [c1, c2, tint] = PALETTE[secteur] || PALETTE.services;
   const ic = ICONES[secteur] || ICONES.services;
@@ -79,6 +94,15 @@ export function siteHtml(p, cfg, th, secteur) {
     ["Sur mesure", "Chaque demande est unique"],
     tel ? ["Contact direct", "Un seul interlocuteur"] : null,
   ].filter(Boolean).slice(0, 3).map(([v, l]) => `<div><b>${v}</b><span>${esc(l)}</span></div>`).join("");
+
+  const offres = FORMULES.map((f) => ({ ...f, url: lienPaiement(f.k, p) }));
+  const payable = offres.some((f) => f.url);
+  const contactUrl = cfg.reply_to ? `mailto:${cfg.reply_to}?subject=${encodeURIComponent("Site pour " + nom)}` : "#agence";
+  const tarifs = offres.map((f, i) => `
+<div class="plan${f.top ? " top" : ""} rv" style="--d:${i * 90}ms">${f.top ? '<span class="tag">Le plus complet</span>' : ""}
+<h3>${esc(f.nom)}</h3><div class="price"><b>${esc(f.prix)}</b> <span>${esc(f.unite)}</span></div><div class="per">${esc(f.mois)}</div>
+<ul>${f.items.map((x) => `<li>${svg("check", 16)}${esc(x)}</li>`).join("")}</ul>
+<a class="btn ${f.top ? "solid" : "ghost"}" href="${esc(f.url || contactUrl)}"${f.url ? ' rel="noopener"' : ""}>${f.url ? "Choisir cette formule" : "Demander cette formule"}</a></div>`).join("");
 
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="${c1}">
@@ -155,6 +179,16 @@ h2{font-size:clamp(32px,4vw,50px);line-height:1.1;color:var(--c1)}
 .row .ic{flex:none;margin-top:3px}.row small{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.16em;color:var(--mut)}
 .row a,.row span{font-size:17px;text-decoration:none;color:var(--ink)}
 .map{min-height:420px;filter:grayscale(1) contrast(1.05);border-left:1px solid var(--line)}.map iframe{width:100%;height:100%;min-height:420px;border:0;display:block}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:stretch}
+.plan{position:relative;display:flex;flex-direction:column;padding:38px 32px;background:#fff;border:1px solid var(--line)}
+.plan.top{border-color:var(--c1);box-shadow:0 30px 60px -35px rgba(0,0,0,.35)}
+.tag{position:absolute;top:-12px;left:32px;background:var(--c1);color:#fff;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:5px 10px}
+.plan h3{font-size:24px;margin-bottom:14px}.price b{font-family:Fraunces,serif;font-weight:500;font-size:44px;color:var(--c1)}.price span{color:var(--mut);font-size:14px}
+.per{color:var(--c2);font-size:14px;font-weight:600;margin:4px 0 24px}
+.plan ul{list-style:none;margin-bottom:30px;flex:1}.plan li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font-size:15px;color:var(--ink)}
+.plan li svg{color:var(--c2);flex:none;margin-top:4px}.plan .btn{justify-content:center}
+.promo{margin-top:26px;text-align:center;color:var(--mut);font-size:14.5px}.promo b{color:var(--c1)}
+.secure{display:flex;justify-content:center;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:var(--mut)}
 .final{background:var(--c1);color:#fff;padding:96px 0;text-align:center}
 .final .eyebrow{color:var(--c2)}.final h2{color:#fff;max-width:760px;margin:0 auto 18px}
 .final p{color:rgba(255,255,255,.72);max-width:540px;margin:0 auto 36px}
@@ -163,16 +197,16 @@ h2{font-size:clamp(32px,4vw,50px);line-height:1.1;color:var(--c1)}
 footer{padding:34px 0 90px;font-size:13.5px;color:var(--mut);text-align:center;border-top:1px solid var(--line)}footer a{color:var(--c1)}
 .sticky{position:fixed;right:18px;bottom:18px;z-index:20;box-shadow:0 12px 30px -10px rgba(0,0,0,.4)}
 .rv{opacity:0;transform:translateY(22px);transition:opacity .9s ease var(--d,0ms),transform .9s cubic-bezier(.2,.7,.2,1) var(--d,0ms)}.rv.on{opacity:1;transform:none}
-@media(max-width:980px){.hero .wrap,.head,.contact{grid-template-columns:1fr}.hero{padding:60px 0}.scene{order:-1}.card3d{max-width:340px}
+@media(max-width:980px){.plans{grid-template-columns:1fr;max-width:480px;margin:0 auto}.hero .wrap,.head,.contact{grid-template-columns:1fr}.hero{padding:60px 0}.scene{order:-1}.card3d{max-width:340px}
 .svcs{grid-template-columns:1fr 1fr}.svc:nth-child(2){border-right:0}.svc:nth-child(-n+2){border-bottom:1px solid var(--line)}
 .links a:not(.btn){display:none}.map{border-left:0;border-top:1px solid var(--line)}}
 @media(max-width:640px){.facts .wrap,.steps,.svcs{grid-template-columns:1fr}.facts .wrap>div{border-left:0;border-top:1px solid var(--line);padding-left:0}.facts .wrap>div:first-child{border-top:0}
 .svc{border-right:0;border-bottom:1px solid var(--line)}.steps:before{display:none}.info{padding:32px 24px}section{padding:80px 0}.links .btn{display:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}.rv{opacity:1;transform:none}}
 </style></head><body>
-<div class="demo">Aperçu personnalisé conçu par ${esc(cfg.agence_nom)} pour ${esc(nom)} — maquette de démonstration. <a href="#agence">Le mettre en ligne</a></div>
+<div class="demo">Aperçu personnalisé conçu par ${esc(cfg.agence_nom)} pour ${esc(nom)} — maquette de démonstration. <a href="#tarifs">Le mettre en ligne</a></div>
 <header><div class="wrap nav"><a class="brand" href="#"><span class="mono">${esc(initiales)}</span>${esc(nom)}</a>
-<nav class="links"><a href="#services">Services</a><a href="#methode">Méthode</a><a href="#contact">Contact</a>${tel ? `<a class="btn" href="tel:${esc(telL)}">${esc(tel)}</a>` : ""}</nav></div></header>
+<nav class="links"><a href="#services">Services</a><a href="#methode">Méthode</a><a href="#tarifs">Tarifs</a><a href="#contact">Contact</a>${tel ? `<a class="btn" href="tel:${esc(telL)}">${esc(tel)}</a>` : ""}</nav></div></header>
 
 <main>
 <div class="hero"><div class="wrap">
@@ -211,6 +245,14 @@ footer{padding:34px 0 90px;font-size:13.5px;color:var(--mut);text-align:center;b
  </div>
  <div class="map"><iframe loading="lazy" src="https://www.google.com/maps?q=${q}&output=embed" title="Plan d'accès"></iframe></div>
 </div></div></section>
+
+<section id="tarifs" class="alt"><div class="wrap">
+ <div class="head"><div><div class="eyebrow rv">Mettre ce site en ligne</div><h2 class="rv">Choisissez votre formule.</h2></div>
+ <p class="rv">Proposition de ${esc(cfg.agence_nom)} pour ${esc(nom)}. ${payable ? "Paiement sécurisé en quelques clics, puis nous personnalisons le site avec vous et le mettons en ligne à votre nom." : "Répondez au mail ou appelez-nous : nous mettons le site en ligne à votre nom."}</p></div>
+ <div class="plans">${tarifs}</div>
+ <p class="promo rv">Offre de lancement : <b>-30 % sur la création</b> pour les premiers professionnels${payable ? " — code <b>LANCEMENT30</b> à saisir au paiement" : ""}. Option logo ou photos professionnelles : +150 € HT.</p>
+ ${payable ? `<p class="secure">${svg("shield", 15)} Paiement sécurisé par Stripe · Carte bancaire, Apple Pay, Google Pay</p>` : ""}
+</div></section>
 </main>
 
 <div class="final" id="agence"><div class="wrap">
