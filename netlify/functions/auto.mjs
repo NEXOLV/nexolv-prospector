@@ -38,7 +38,7 @@ export default async () => {
     }
   }
 
-  if (cfg.auto_envoi && C.env("BREVO_API_KEY")) {
+  if (cfg.auto_envoi && C.envoiPret()) {
     const reste = Math.max(0, Number(cfg.quota_jour) - C.envoisDuJour(db));
     const lot = C.envoyables(db).slice(0, Math.min(reste, Number(cfg.auto_envois_par_heure) || 3));
     for (const p of lot) {

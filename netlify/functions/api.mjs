@@ -39,7 +39,7 @@ export default async (req) => {
           prospects: Object.values(db.prospects).sort((a, b) => (b.date_ajout || "").localeCompare(a.date_ajout || "")),
           config: cfg, blacklist: db.blacklist, envoisDuJour: C.envoisDuJour(db),
           envois: db.envois.slice(-200).reverse(),
-          cles: { google: !!C.env("GOOGLE_API_KEY"), pappers: !!C.env("PAPPERS_API_KEY"), brevo: !!C.env("BREVO_API_KEY") },
+          cles: { google: !!C.env("GOOGLE_API_KEY"), pappers: !!C.env("PAPPERS_API_KEY"), brevo: C.envoiPret(), smtp: C.smtpPret() },
           statuts: C.STATUTS, base,
         });
 
@@ -144,7 +144,7 @@ export default async (req) => {
         if (!p) return C.json({ error: "introuvable" }, 404);
         if (body.test) {
           const msg = C.renderEmail(p, cfg, base);
-          await C.brevoSend(cfg, body.test, { ...msg, sujet: "[TEST] " + msg.sujet });
+          await C.mailSend(cfg, body.test, { ...msg, sujet: "[TEST] " + msg.sujet });
           db.envois.push({ id: p.id, date: new Date().toISOString(), to: body.test, sujet: "[TEST] " + msg.sujet, ok: true, test: true });
           await C.saveDB(db);
           return C.json({ ok: true });
