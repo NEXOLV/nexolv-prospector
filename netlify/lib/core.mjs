@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import dns from "node:dns/promises";
 import { getStore } from "@netlify/blobs";
 import { emailHtml } from "./emailhtml.mjs";
+import nodemailer from "nodemailer";
 
 export const env = (k) => process.env[k] || "";
 
@@ -377,11 +378,34 @@ export async function brevoSend(cfg, to, { sujet, texte, html, stop }) {
   return true;
 }
 
+// Envoi par la boîte mail de l'agence (SMTP OVH) — prioritaire sur Brevo
+export const smtpPret = () => !!env("SMTP_PASSWORD");
+export const envoiPret = () => smtpPret() || !!env("BREVO_API_KEY");
+let transport = null;
+export async function smtpSend(cfg, to, { sujet, texte, html, stop }) {
+  const user = env("SMTP_USER") || cfg.expediteur_email;
+  if (!transport) transport = nodemailer.createTransport({
+    host: env("SMTP_HOST") || "smtp.mail.ovh.net", port: Number(env("SMTP_PORT") || 465), secure: Number(env("SMTP_PORT") || 465) === 465,
+    auth: { user, pass: env("SMTP_PASSWORD") }, connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 12000,
+  });
+  const unsub = [stop && `<${stop}>`, `<mailto:${cfg.reply_to || user}?subject=STOP>`].filter(Boolean).join(", ");
+  await transport.sendMail({
+    from: { name: cfg.expediteur_nom || cfg.agence_nom || "", address: user },
+    to, replyTo: cfg.reply_to || user, subject: sujet, text: texte, html,
+    headers: { "List-Unsubscribe": unsub, ...(stop ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) },
+  });
+  return true;
+}
+export async function mailSend(cfg, to, msg) {
+  if (smtpPret()) return smtpSend(cfg, to, msg);
+  return brevoSend(cfg, to, msg);
+}
+
 export async function envoyerProspect(db, p, cfg, base) {
   const msg = renderEmail(p, cfg, base);
   const date = new Date().toISOString();
   try {
-    await brevoSend(cfg, p.email.trim(), msg);
+    await mailSend(cfg, p.email.trim(), msg);
     db.envois.push({ id: p.id, date, to: p.email, sujet: msg.sujet, ok: true });
     p.statut = "envoye"; p.date_envoi = date;
     return { ok: true };
