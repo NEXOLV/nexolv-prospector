@@ -11,7 +11,7 @@ export default async (req) => {
     // ---------- routes publiques ----------
     if (route === "login") {
       const { password } = await req.json().catch(() => ({}));
-      if (!C.env("APP_PASSWORD")) return C.json({ error: "APP_PASSWORD n'est pas défini dans les variables Netlify." }, 500);
+      if (!C.env("APP_PASSWORD")) return C.json({ error: "APP_PASSWORD n'est pas défini dans les secrets Cloudflare." }, 500);
       if (!C.checkPassword(password)) return C.json({ error: "Mot de passe incorrect" }, 401);
       return C.json({ token: C.sessionToken() });
     }
