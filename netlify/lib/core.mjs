@@ -1,17 +1,15 @@
 // NEXOLV Prospector SaaS — logique partagée (stockage, recherche, enrichissement, sites, e-mails)
 import crypto from "node:crypto";
-import dns from "node:dns/promises";
-import { getStore } from "@netlify/blobs";
 import { emailHtml } from "./emailhtml.mjs";
-import nodemailer from "nodemailer";
+import { WorkerMailer } from "worker-mailer";
 
 export const env = (k) => process.env[k] || "";
 
 // ---------------------------------------------------------------------------
-// Stockage (Netlify Blobs) : un seul document "db"
+// Stockage : un seul document "db" (le magasin est fourni par le point d'entrée, ici Cloudflare D1)
 // ---------------------------------------------------------------------------
 let _store = null;
-const store = () => (_store ||= getStore({ name: "nexolv-crm", consistency: "strong" }));
+const store = () => { if (!_store) throw new Error("Stockage non initialisé."); return _store; };
 export const __setStore = (s) => { _store = s; };
 
 export async function loadDB() {
@@ -180,7 +178,7 @@ export const FAUX_SITES = ["facebook.com", "instagram.com", "linktr.ee", "pagesj
 
 export async function placesSearch(query, maxPages = 2) {
   const key = env("GOOGLE_API_KEY");
-  if (!key) throw new Error("Clé Google manquante (variable GOOGLE_API_KEY sur Netlify).");
+  if (!key) throw new Error("Clé Google manquante (secret GOOGLE_API_KEY sur Cloudflare).");
   const out = []; let token = null;
   for (let i = 0; i < Math.min(3, Math.max(1, maxPages)); i++) {
     const body = { textQuery: query, languageCode: "fr", regionCode: "FR", pageSize: 20 };
@@ -260,7 +258,7 @@ const cap = (s) => String(s || "").toLowerCase().replace(/(^|[\s-])\S/g, (m) => 
 // ---------------------------------------------------------------------------
 export async function pappersPage({ departement, code_naf, date_creation_min, page = 1, par_page = 20 }) {
   const key = env("PAPPERS_API_KEY");
-  if (!key) throw new Error("Clé Pappers manquante (variable PAPPERS_API_KEY sur Netlify).");
+  if (!key) throw new Error("Clé Pappers manquante (secret PAPPERS_API_KEY sur Cloudflare).");
   const u = new URL("https://api.pappers.fr/v2/recherche");
   const p = { api_token: key, par_page, page, entreprise_cessee: "false", departement, code_naf, date_creation_min };
   for (const [k, v] of Object.entries(p)) if (v) u.searchParams.set(k, v);
@@ -325,8 +323,12 @@ export async function emailValide(email) {
   email = String(email || "").trim();
   if (!EMAIL_RE.test(email)) return false;
   if (env("SKIP_MX_CHECK")) return true;
-  try { return (await dns.resolveMx(email.split("@")[1])).length > 0; }
-  catch (e) { return !["ENOTFOUND", "ENODATA", "NXDOMAIN"].includes(e.code); } // panne DNS : on ne bloque pas
+  try { // requête DNS (MX) via DNS-over-HTTPS
+    const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(email.split("@")[1])}&type=MX`, { headers: { accept: "application/dns-json" } });
+    const j = await r.json();
+    if (j.Status === 3) return false; // NXDOMAIN
+    return (j.Answer || []).some((a) => a.type === 15) || j.Status !== 0;
+  } catch { return true; } // panne DNS : on ne bloque pas
 }
 
 export function envoyables(db) {
@@ -362,7 +364,7 @@ export function renderEmail(p, cfg, base) {
 
 export async function brevoSend(cfg, to, { sujet, texte, html, stop }) {
   const key = env("BREVO_API_KEY");
-  if (!key) throw new Error("Clé Brevo manquante (variable BREVO_API_KEY sur Netlify).");
+  if (!key) throw new Error("Clé Brevo manquante (secret BREVO_API_KEY sur Cloudflare).");
   const unsub = [stop && `<${stop}>`, `<mailto:${cfg.reply_to || cfg.expediteur_email}?subject=STOP>`].filter(Boolean).join(", ");
   const r = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -381,19 +383,18 @@ export async function brevoSend(cfg, to, { sujet, texte, html, stop }) {
 // Envoi par la boîte mail de l'agence (SMTP OVH) — prioritaire sur Brevo
 export const smtpPret = () => !!env("SMTP_PASSWORD");
 export const envoiPret = () => smtpPret() || !!env("BREVO_API_KEY");
-let transport = null;
 export async function smtpSend(cfg, to, { sujet, texte, html, stop }) {
   const user = env("SMTP_USER") || cfg.expediteur_email;
-  if (!transport) transport = nodemailer.createTransport({
-    host: env("SMTP_HOST") || "smtp.mail.ovh.net", port: Number(env("SMTP_PORT") || 465), secure: Number(env("SMTP_PORT") || 465) === 465,
-    auth: { user, pass: env("SMTP_PASSWORD") }, connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 12000,
-  });
+  const port = Number(env("SMTP_PORT") || 465);
   const unsub = [stop && `<${stop}>`, `<mailto:${cfg.reply_to || user}?subject=STOP>`].filter(Boolean).join(", ");
-  await transport.sendMail({
-    from: { name: cfg.expediteur_nom || cfg.agence_nom || "", address: user },
-    to, replyTo: cfg.reply_to || user, subject: sujet, text: texte, html,
-    headers: { "List-Unsubscribe": unsub, ...(stop ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) },
-  });
+  await WorkerMailer.send(
+    { host: env("SMTP_HOST") || "smtp.mail.ovh.net", port, secure: port === 465, startTls: port !== 465,
+      credentials: { username: user, password: env("SMTP_PASSWORD") }, authType: ["plain", "login"],
+      name: "nexolv.fr", socketTimeoutMs: 15000, responseTimeoutMs: 15000 },
+    { from: { name: cfg.expediteur_nom || cfg.agence_nom || "", email: user }, to, reply: cfg.reply_to || user,
+      subject: sujet, text: texte, html,
+      headers: { "List-Unsubscribe": unsub, ...(stop ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) } },
+  );
   return true;
 }
 export async function mailSend(cfg, to, msg) {
