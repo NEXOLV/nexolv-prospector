@@ -61,7 +61,7 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
 </form></div>
 
 <div class="top"><b>🎯 NEXOLV Prospector</b><span class="sp"></span>
-  <span class="pill" id="kG">Google</span><span class="pill" id="kP">Pappers</span><span class="pill" id="kB">Brevo</span>
+  <span class="pill" id="kG">Google</span><span class="pill" id="kP">Pappers</span><span class="pill" id="kB">E-mail</span>
   <button class="btn sec" id="logout" style="padding:5px 10px">Déconnexion</button></div>
 <nav class="tabs" id="tabs">
   <button data-t="search" class="on">1 · Rechercher</button>
@@ -183,7 +183,7 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
     <div class="grid2">
       <div><label>Nom de l'agence</label><input name="agence_nom"></div>
       <div><label>Nom d'expéditeur</label><input name="expediteur_nom"></div>
-      <div><label>Adresse d'expéditeur (validée dans Brevo)</label><input name="expediteur_email"></div>
+      <div><label>Adresse d'expéditeur (boîte contact@nexolv.fr)</label><input name="expediteur_email"></div>
       <div><label>Adresse de réponse</label><input name="reply_to"></div>
       <div><label>Téléphone affiché</label><input name="signature_tel"></div>
       <div><label>Votre site</label><input name="signature_site"></div>
@@ -227,7 +227,7 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
   <div class="card" style="margin-top:16px">
     <h2>Clés d'accès</h2>
     <p class="note">Pour la sécurité, les clés ne se saisissent pas ici. Elles se règlent sur Netlify : <b>Site configuration → Environment variables</b>. Il faut ensuite relancer un déploiement.<br>
-    <code>APP_PASSWORD</code> mot de passe de l'appli · <code>GOOGLE_API_KEY</code> Google Places API (New) · <code>BREVO_API_KEY</code> envoi des e-mails · <code>PAPPERS_API_KEY</code> optionnel</p>
+    <code>APP_PASSWORD</code> mot de passe de l'appli · <code>GOOGLE_API_KEY</code> Google Places API (New) · <code>SMTP_PASSWORD</code> mot de passe de contact@nexolv.fr (envoi des e-mails) · <code>PAPPERS_API_KEY</code> optionnel</p>
   </div>
 </section>
 </main>
@@ -292,7 +292,7 @@ $$("#tabs button").forEach((b) => b.onclick = () => {
 async function load(first) {
   S = await api("state");
   const k = (id, on, lab) => { $(id).textContent = (on ? "✅ " : "⚠️ ") + lab; };
-  k("#kG", S.cles.google, "Google"); k("#kP", S.cles.pappers, "Pappers"); k("#kB", S.cles.brevo, "Brevo");
+  k("#kG", S.cles.google, "Google"); k("#kP", S.cles.pappers, "Pappers"); k("#kB", S.cles.brevo, S.cles.smtp ? "E-mail (OVH)" : "E-mail");
   if (first) {
     $("#gMetiers").value = S.config.auto_metiers; $("#gVilles").value = S.config.auto_villes;
     $("#mTest").value = S.config.reply_to; fillCfg();
