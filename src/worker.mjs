@@ -64,7 +64,13 @@ export default {
 // Reprise des données depuis l'ancienne version (Netlify) : réservé à l'appli connectée
 async function importer(req) {
   if (!C.isAuthed(req)) return C.json({ error: "Session expirée, reconnectez-vous." }, 401);
-  const d = await req.json().catch(() => null);
+  let d = await req.json().catch(() => null);
+  // { source: "https://ancienne-adresse" } : on va chercher les données sur l'ancienne version (même mot de passe)
+  if (d && typeof d.source === "string" && /^https:\/\//.test(d.source)) {
+    const r = await fetch(d.source.replace(/\/$/, "") + "/api/state", { headers: { authorization: "Bearer " + C.sessionToken() } });
+    if (!r.ok) return C.json({ error: "Ancienne version injoignable (" + r.status + ")" }, 502);
+    d = await r.json();
+  }
   if (!d || typeof d.prospects !== "object") return C.json({ error: "Données invalides" }, 400);
   const db = await C.loadDB();
   const prospects = Array.isArray(d.prospects) ? Object.fromEntries(d.prospects.map((p) => [p.id, p])) : d.prospects;
