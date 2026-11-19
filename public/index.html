@@ -105,10 +105,17 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
         <div><label>Nombre max</label><input id="pMax" type="number" value="40" min="20" step="20"></div>
       </div>
       <div class="row" style="margin-top:10px">
+        <div><label>Code postal (optionnel)</label><input id="pCp" placeholder="51100"></div>
+        <div><label>Chiffre d'affaires min (€)</label><input id="pCaMin" type="number" min="0" step="10000" placeholder="ex. 100000"></div>
+        <div><label>Chiffre d'affaires max (€)</label><input id="pCaMax" type="number" min="0" step="10000"></div>
+        <div><label>Bénéfice min (€)</label><input id="pResMin" type="number" step="1000" placeholder="ex. 0 = rentables"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="chk"><input type="checkbox" id="pSite"> Garder aussi celles qui ont déjà un site (pour proposer une refonte)</div>
         <div class="chk"><input type="checkbox" id="pVer" checked> Vérifier sur Google Maps qu'ils n'ont pas de site</div>
         <div class="chk"><input type="checkbox" id="pDemo" checked> Publier la démo automatiquement</div>
       </div>
-      <p class="note">Les entreprises récemment créées sont souvent les plus réceptives. Chaque page de 20 consomme des crédits Pappers.</p>
+      <p class="note">Les entreprises récemment créées sont souvent les plus réceptives. Les filtres de chiffre d'affaires et de bénéfice ne gardent que les entreprises qui publient leurs comptes. Chaque page de 20 consomme 2 crédits Pappers.</p>
       <button class="btn" id="goP">Lancer la recherche Pappers</button>
     </div>
     <div class="log" id="log"></div>
@@ -210,7 +217,7 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
   </div>
   <div class="card">
     <h2>Mode automatique</h2>
-    <p class="note">Du lundi au vendredi, de 9 h à 18 h. Chaque jour, une nouvelle recherche (un métier × une ville, à tour de rôle) ajoute des prospects et publie leurs démos. Chaque heure, quelques e-mails partent vers les prospects prêts. Tout tourne sur Netlify, même ordinateur éteint.</p>
+    <p class="note">Du lundi au vendredi, de 9 h à 18 h. Chaque jour, une nouvelle recherche (un métier × une ville, à tour de rôle) ajoute des prospects et publie leurs démos. Chaque heure, quelques e-mails partent vers les prospects prêts. Tout tourne sur Cloudflare, même ordinateur éteint.</p>
     <div class="grid2">
       <div><label>Métiers</label><textarea name="auto_metiers" rows="5"></textarea></div>
       <div><label>Villes</label><textarea name="auto_villes" rows="5"></textarea></div>
@@ -226,7 +233,7 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
   </form>
   <div class="card" style="margin-top:16px">
     <h2>Clés d'accès</h2>
-    <p class="note">Pour la sécurité, les clés ne se saisissent pas ici. Elles se règlent sur Netlify : <b>Site configuration → Environment variables</b>. Il faut ensuite relancer un déploiement.<br>
+    <p class="note">Pour la sécurité, les clés ne se saisissent pas ici. Elles se règlent sur Cloudflare : <b>Workers → nexolv-prospector → Paramètres → Variables et secrets</b>.<br>
     <code>APP_PASSWORD</code> mot de passe de l'appli · <code>GOOGLE_API_KEY</code> Google Places API (New) · <code>SMTP_PASSWORD</code> mot de passe de contact@nexolv.fr (envoi des e-mails) · <code>PAPPERS_API_KEY</code> optionnel</p>
   </div>
 </section>
@@ -354,12 +361,13 @@ $("#goP").onclick = async () => {
   const ids = [];
   try {
     for (let page = 1; page <= Math.ceil(+$("#pMax").value / 20); page++) {
-      const r = await api("pappers", { departement: $("#pDep").value.trim(), code_naf: $("#pNaf").value.replace(/\s/g, ""), date_creation_min: d ? `${d}-${mo}-${y}` : "", page });
+      const r = await api("pappers", { departement: $("#pDep").value.trim(), code_postal: $("#pCp").value.trim(), code_naf: $("#pNaf").value.replace(/\s/g, ""), date_creation_min: d ? `${d}-${mo}-${y}` : "",
+        chiffre_affaires_min: $("#pCaMin").value, chiffre_affaires_max: $("#pCaMax").value, resultat_min: $("#pResMin").value, avec_site: $("#pSite").checked, page });
       log(`📄 Page ${page} : ${r.recus} entreprises, ${r.nouveaux.length} nouvelles`); ids.push(...r.nouveaux);
       if (r.recus < 20) break;
     }
     let gard = ids;
-    if ($("#pVer").checked && S.cles.google) {
+    if ($("#pVer").checked && !$("#pSite").checked && S.cles.google) {
       log(`🔎 Vérification Google Maps de ${ids.length} entreprise(s)…`); gard = [];
       for (const id of ids) { try { const r = await api("verify", { id }); if (!r.supprime) gard.push(id); } catch (e) { log("   ⚠️ " + e.message); gard.push(id); } }
       log(`   ${ids.length - gard.length} retirée(s) car elles ont déjà un site`);
@@ -377,6 +385,15 @@ function filtered() {
     (!s || p.statut === s) && (!e || (!!p.email) === (e === "1")) && (!d || (!!p.site_slug) === (d === "1")));
 }
 const statTag = (s) => { const c = { en_ligne: "", envoye: "warn", repondu: "ok", client: "ok", stop: "bad", pas_interesse: "bad" }[s] ?? ""; return c; };
+const eur = (n) => (Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(1).replace(".", ",") + " M€" : Math.round(n / 1000) + " k€");
+function finInfo(p) {
+  const parts = [];
+  if (p.ca != null) parts.push("CA " + eur(p.ca));
+  if (p.resultat != null) parts.push(`<span style="color:${p.resultat >= 0 ? "#1a7f4b" : "#b42318"}">résultat ${eur(p.resultat)}</span>`);
+  if (p.annee_finances && parts.length) parts.push(esc(p.annee_finances));
+  const site = p.site_web ? `<a href="${esc(/^https?:/.test(p.site_web) ? p.site_web : "https://" + p.site_web)}" target="_blank" rel="noopener">🌐 site actuel</a>` : "";
+  return parts.length || site ? `<div class="sub">${parts.join(" · ")}${parts.length && site ? " · " : ""}${site}</div>` : "";
+}
 function renderTable() {
   const rows = filtered();
   $("#tb").innerHTML = rows.map((p) => {
@@ -385,7 +402,7 @@ function renderTable() {
     const pap = "https://www.pappers.fr/recherche?q=" + encodeURIComponent(p.siren || p.nom);
     return `<tr data-id="${esc(p.id)}">
       <td><input type="checkbox" class="ck" ${sel.has(p.id) ? "checked" : ""}></td>
-      <td><b>${esc(p.nom)}</b>${p.opposition ? ' <span class="tag bad">opposé prospection</span>' : ""}<div class="sub">${esc(p.activite)} · ${esc(p.ville)}</div></td>
+      <td><b>${esc(p.nom)}</b>${p.opposition ? ' <span class="tag bad">opposé prospection</span>' : ""}<div class="sub">${esc(p.activite)} · ${esc(p.ville)}</div>${finInfo(p)}</td>
       <td>${p.telephone ? `<a href="tel:${esc(p.telephone.replace(/\s/g, ""))}">${esc(p.telephone)}</a>` : '<span class="sub">—</span>'}<div class="sub">${esc(p.dirigeant || "")}</div></td>
       <td><input class="em" value="${esc(p.email || "")}" placeholder="à compléter"></td>
       <td><select class="st">${S.statuts.map((s) => `<option ${s === p.statut ? "selected" : ""}>${s}</option>`).join("")}</select></td>
