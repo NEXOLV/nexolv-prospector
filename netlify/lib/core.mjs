@@ -257,7 +257,7 @@ const cap = (s) => String(s || "").toLowerCase().replace(/(^|[\s-])\S/g, (m) => 
 // Pappers (optionnel)
 // ---------------------------------------------------------------------------
 const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? "" : String(Math.round(Number(v))));
-export async function pappersPage({ departement, code_postal, code_naf, date_creation_min, chiffre_affaires_min, chiffre_affaires_max, resultat_min, resultat_max, page = 1, par_page = 20 }) {
+export async function pappersPage({ departement, code_postal, code_naf, date_creation_min, chiffre_affaires_min, chiffre_affaires_max, resultat_min, resultat_max, avec_site, page = 1, par_page = 20 }) {
   const key = env("PAPPERS_API_KEY");
   if (!key) throw new Error("Clé Pappers manquante (secret PAPPERS_API_KEY sur Cloudflare).");
   const u = new URL("https://api.pappers.fr/v2/recherche");
@@ -265,6 +265,7 @@ export async function pappersPage({ departement, code_postal, code_naf, date_cre
     api_token: key, par_page, page, entreprise_cessee: "false", departement, code_postal, code_naf, date_creation_min,
     chiffre_affaires_min: num(chiffre_affaires_min), chiffre_affaires_max: num(chiffre_affaires_max),
     resultat_min: num(resultat_min), resultat_max: num(resultat_max),
+    siege: (departement || code_postal) ? "true" : "", champs_supplementaires: avec_site ? "sites_internet" : "",
   };
   for (const [k, v] of Object.entries(p)) if (v) u.searchParams.set(k, v);
   const r = await fetch(u);
@@ -287,7 +288,8 @@ export function pappersToProspect(e) {
   };
   if (e.email) { p.email = e.email; p.email_source = "pappers"; }
   if (e.telephone) p.telephone = e.telephone;
-  if (e.site_internet) { p.site_existant = classerSite(e.site_internet); p.site_web = e.site_internet; }
+  const site = e.site_internet || (e.sites_internet || [])[0];
+  if (site) { p.site_existant = classerSite(site); p.site_web = /^https?:/.test(site) ? site : "https://" + site; }
   const fin = (Array.isArray(e.finances) && e.finances[0]) || {};
   const ca = e.chiffre_affaires ?? fin.chiffre_affaires, res = e.resultat ?? fin.resultat;
   if (ca != null) p.ca = Number(ca);
