@@ -12,7 +12,7 @@
   },
   "d1_databases": [{ "binding": "DB", "database_name": "nexolv-prospector" }],
   // Mode automatique : chaque heure, du lundi au vendredi, de 9 h à 18 h (heure de Paris en hiver)
-  "triggers": { "crons": ["0 8-17 * * 1-5"] },
+  "triggers": { "crons": ["0 8-17 * * MON-FRI"] },
   "vars": {
     "URL": "https://app.nexolv.fr",
     "SMTP_USER": "contact@nexolv.fr",
