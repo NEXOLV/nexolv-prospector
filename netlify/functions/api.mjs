@@ -66,7 +66,7 @@ export default async (req) => {
         const nouveaux = [];
         for (const e of res) {
           const p = C.pappersToProspect(e);
-          if ((p.site_existant || "").startsWith("site:")) continue;
+          if (!body.avec_site && (p.site_existant || "").startsWith("site:")) continue;
           if (C.upsert(db, p)) nouveaux.push(p.id);
         }
         await C.saveDB(db);
