@@ -256,11 +256,16 @@ const cap = (s) => String(s || "").toLowerCase().replace(/(^|[\s-])\S/g, (m) => 
 // ---------------------------------------------------------------------------
 // Pappers (optionnel)
 // ---------------------------------------------------------------------------
-export async function pappersPage({ departement, code_naf, date_creation_min, page = 1, par_page = 20 }) {
+const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? "" : String(Math.round(Number(v))));
+export async function pappersPage({ departement, code_postal, code_naf, date_creation_min, chiffre_affaires_min, chiffre_affaires_max, resultat_min, resultat_max, page = 1, par_page = 20 }) {
   const key = env("PAPPERS_API_KEY");
   if (!key) throw new Error("Clé Pappers manquante (secret PAPPERS_API_KEY sur Cloudflare).");
   const u = new URL("https://api.pappers.fr/v2/recherche");
-  const p = { api_token: key, par_page, page, entreprise_cessee: "false", departement, code_naf, date_creation_min };
+  const p = {
+    api_token: key, par_page, page, entreprise_cessee: "false", departement, code_postal, code_naf, date_creation_min,
+    chiffre_affaires_min: num(chiffre_affaires_min), chiffre_affaires_max: num(chiffre_affaires_max),
+    resultat_min: num(resultat_min), resultat_max: num(resultat_max),
+  };
   for (const [k, v] of Object.entries(p)) if (v) u.searchParams.set(k, v);
   const r = await fetch(u);
   if (!r.ok) throw new Error(`Pappers ${r.status} : ${(await r.text()).slice(0, 300)}`);
@@ -282,7 +287,13 @@ export function pappersToProspect(e) {
   };
   if (e.email) { p.email = e.email; p.email_source = "pappers"; }
   if (e.telephone) p.telephone = e.telephone;
-  if (e.site_internet) p.site_existant = classerSite(e.site_internet);
+  if (e.site_internet) { p.site_existant = classerSite(e.site_internet); p.site_web = e.site_internet; }
+  const fin = (Array.isArray(e.finances) && e.finances[0]) || {};
+  const ca = e.chiffre_affaires ?? fin.chiffre_affaires, res = e.resultat ?? fin.resultat;
+  if (ca != null) p.ca = Number(ca);
+  if (res != null) p.resultat = Number(res);
+  if (fin.annee || e.annee_finances) p.annee_finances = String(fin.annee || e.annee_finances);
+  if (e.effectif || e.tranche_effectif) p.effectif = String(e.effectif || e.tranche_effectif);
   return p;
 }
 
