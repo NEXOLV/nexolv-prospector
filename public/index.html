@@ -55,13 +55,15 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
 <div id="login"><form id="loginForm">
   <h2 style="margin-bottom:4px">🎯 NEXOLV Prospector</h2>
   <p class="note" style="margin-top:0">Connexion</p>
-  <label>Mot de passe</label><input type="password" id="pw" autocomplete="current-password" required>
+  <label>E-mail <span class="note">(abonnés)</span></label><input type="email" id="lEmail" autocomplete="username" placeholder="vous@entreprise.fr">
+  <label style="margin-top:10px">Code d'accès</label><input type="password" id="pw" autocomplete="current-password" required placeholder="XXXXX-XXXXX">
+  <p class="note">Pas encore abonné ? <a href="/abonnement">S'abonner (49 €/mois)</a></p>
   <p id="loginErr" style="color:var(--bad);font-size:13px"></p>
   <button class="btn" style="width:100%">Se connecter</button>
 </form></div>
 
 <div class="top"><b>🎯 NEXOLV Prospector</b><span class="sp"></span>
-  <span class="pill" id="kG">Google</span><span class="pill" id="kP">Pappers</span><span class="pill" id="kB">E-mail</span>
+  <span class="pill" id="kG">Google</span><span class="pill" id="kP">Pappers</span><span class="pill" id="kB">E-mail</span><span class="pill hide" id="kQ"></span>
   <button class="btn sec" id="logout" style="padding:5px 10px">Déconnexion</button></div>
 <nav class="tabs" id="tabs">
   <button data-t="search" class="on">1 · Rechercher</button>
@@ -190,7 +192,7 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
     <div class="grid2">
       <div><label>Nom de l'agence</label><input name="agence_nom"></div>
       <div><label>Nom d'expéditeur</label><input name="expediteur_nom"></div>
-      <div><label>Adresse d'expéditeur (boîte contact@nexolv.fr)</label><input name="expediteur_email"></div>
+      <div><label>Adresse d'expéditeur</label><input name="expediteur_email"></div>
       <div><label>Adresse de réponse</label><input name="reply_to"></div>
       <div><label>Téléphone affiché</label><input name="signature_tel"></div>
       <div><label>Votre site</label><input name="signature_site"></div>
@@ -231,7 +233,23 @@ td .sub{color:var(--mut);font-size:12px}td input,td select{padding:5px 7px;font-
   </div>
   <div class="btns"><button class="btn">Enregistrer les réglages</button></div>
   </form>
-  <div class="card" style="margin-top:16px">
+  <div class="card hide" id="smtpCard" style="margin-top:16px">
+    <h2>Envoi des e-mails : votre boîte mail</h2>
+    <p class="note">Les e-mails de prospection partent depuis votre propre adresse professionnelle. Renseignez le serveur d'envoi (SMTP) de votre messagerie : <b>OVH</b> smtp.mail.ovh.net · <b>Gmail</b> smtp.gmail.com (mot de passe d'application) · <b>Outlook / Microsoft 365</b> smtp.office365.com (port 587) · <b>IONOS</b> smtp.ionos.fr. Le mot de passe est chiffré et n'est jamais réaffiché.</p>
+    <div class="grid2">
+      <div><label>Serveur SMTP</label><input id="sHost" placeholder="smtp.mail.ovh.net"></div>
+      <div><label>Port</label><input id="sPort" type="number" placeholder="465"></div>
+      <div><label>Adresse e-mail (identifiant)</label><input id="sUser" type="email" placeholder="contact@votre-agence.fr"></div>
+      <div><label>Mot de passe de la boîte</label><input id="sPass" type="password" autocomplete="new-password" placeholder="(inchangé)"></div>
+    </div>
+    <div class="btns" style="margin-top:12px"><button class="btn" type="button" id="sSave">Enregistrer la boîte d'envoi</button></div>
+  </div>
+  <div class="card hide" id="clientsCard" style="margin-top:16px">
+    <h2>Clients abonnés</h2>
+    <p class="note">Abonnements souscrits via <code>/abonnement</code> (Stripe, 49 €/mois). L'accès est coupé automatiquement si l'abonnement s'arrête (vérification quotidienne).</p>
+    <div id="clientsList"></div>
+  </div>
+  <div class="card" id="keysCard" style="margin-top:16px">
     <h2>Clés d'accès</h2>
     <p class="note">Pour la sécurité, les clés ne se saisissent pas ici. Elles se règlent sur Cloudflare : <b>Workers → nexolv-prospector → Paramètres → Variables et secrets</b>.<br>
     <code>APP_PASSWORD</code> mot de passe de l'appli · <code>GOOGLE_API_KEY</code> Google Places API (New) · <code>SMTP_PASSWORD</code> mot de passe de contact@nexolv.fr (envoi des e-mails) · <code>PAPPERS_API_KEY</code> optionnel</p>
@@ -281,7 +299,7 @@ function showLogin() { $("#login").classList.remove("hide"); setTimeout(() => $(
 $("#loginForm").onsubmit = async (e) => {
   e.preventDefault(); $("#loginErr").textContent = "";
   try {
-    const d = await api("login", { password: $("#pw").value });
+    const d = await api("login", { email: $("#lEmail").value.trim(), code: $("#pw").value, password: $("#pw").value });
     TOKEN = d.token; try { localStorage.setItem("nx_token", TOKEN); } catch {}
     $("#login").classList.add("hide"); $("#pw").value = ""; await load(true);
   } catch (err) { $("#loginErr").textContent = err.message; }
@@ -299,7 +317,13 @@ $$("#tabs button").forEach((b) => b.onclick = () => {
 async function load(first) {
   S = await api("state");
   const k = (id, on, lab) => { $(id).textContent = (on ? "✅ " : "⚠️ ") + lab; };
-  k("#kG", S.cles.google, "Google"); k("#kP", S.cles.pappers, "Pappers"); k("#kB", S.cles.brevo, S.cles.smtp ? "E-mail (OVH)" : "E-mail");
+  const client = S.compte && S.compte.role === "client";
+  k("#kG", S.cles.google, "Google"); k("#kP", S.cles.pappers, "Pappers"); k("#kB", S.cles.brevo, client ? "Ma boîte mail" : S.cles.smtp ? "E-mail (OVH)" : "E-mail");
+  $("#kQ").classList.toggle("hide", !client);
+  if (client) $("#kQ").textContent = `Ce mois : ${S.usage.google}/${S.quotas.google} Google · ${S.usage.pappers}/${S.quotas.pappers} Pappers`;
+  $("#smtpCard").classList.toggle("hide", !client); $("#keysCard").classList.toggle("hide", client); $("#clientsCard").classList.toggle("hide", client);
+  if (first && client) { $("#sHost").value = S.smtp.host; $("#sPort").value = S.smtp.port; $("#sUser").value = S.smtp.user; $("#sPass").placeholder = S.smtp.pass ? "(enregistré — laisser vide pour ne pas changer)" : "mot de passe"; }
+  if (!client) renderClients();
   if (first) {
     $("#gMetiers").value = S.config.auto_metiers; $("#gVilles").value = S.config.auto_villes;
     $("#mTest").value = S.config.reply_to; fillCfg();
@@ -526,6 +550,30 @@ $("#cfgForm").onsubmit = async (e) => {
   if (c.delai_max_s < c.delai_min_s) c.delai_max_s = c.delai_min_s;
   const r = await api("config", { config: c }); S.config = r.config; toast("✅ Réglages enregistrés"); renderMails();
 };
+
+// ---------- boîte d'envoi (clients) ----------
+$("#sSave").onclick = async () => {
+  const r = await api("smtp", { smtp: { host: $("#sHost").value, port: +$("#sPort").value || 465, user: $("#sUser").value, pass: $("#sPass").value } });
+  $("#sPass").value = ""; $("#sPass").placeholder = r.smtp.pass ? "(enregistré — laisser vide pour ne pas changer)" : "mot de passe";
+  toast("✅ Boîte d'envoi enregistrée — testez-la depuis l'onglet E-mails"); load();
+};
+
+// ---------- clients abonnés (agence) ----------
+function renderClients() {
+  const L = S.clients || [];
+  $("#clientsList").innerHTML = !L.length ? '<p class="note">Aucun abonné pour le moment.</p>' :
+    '<table><thead><tr><th>E-mail</th><th>Depuis</th><th>Stripe</th><th>Accès</th><th></th></tr></thead><tbody>' +
+    L.map((a) => `<tr><td>${esc(a.email)}</td><td>${esc((a.cree || "").slice(0, 10))}</td><td>${esc(a.statut_stripe || "")}</td>
+      <td>${a.actif ? "✅ actif" : "⛔ coupé"}${a.manuel ? ` <span class="note">(${esc(a.manuel)} à la main)</span>` : ""}</td>
+      <td><button class="btn sec" data-ca="${a.actif ? "couper" : "retablir"}" data-id="${esc(a.id)}">${a.actif ? "Couper" : "Rétablir"}</button>
+      <button class="btn sec" data-ca="code" data-id="${esc(a.id)}">Nouveau code</button></td></tr>`).join("") + "</tbody></table>";
+  $$("#clientsList [data-ca]").forEach((b) => b.onclick = async () => {
+    if (b.dataset.ca === "couper" && !confirm("Couper l'accès de ce client ?")) return;
+    const r = await api("client", { id: b.dataset.id, action: b.dataset.ca });
+    if (r.code) prompt("Nouveau code d'accès à transmettre au client :", r.code);
+    load();
+  });
+}
 
 // ---------- démarrage ----------
 if (TOKEN) load(true).then(() => $("#login").classList.add("hide")).catch(() => showLogin()); else showLogin();
