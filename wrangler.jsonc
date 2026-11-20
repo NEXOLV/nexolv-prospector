@@ -8,7 +8,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/demo/*"]
+    "run_worker_first": ["/api/*", "/demo/*", "/bienvenue", "/abonnement"]
   },
   "d1_databases": [{ "binding": "DB", "database_name": "nexolv-prospector" }],
   // Mode automatique : chaque heure, du lundi au vendredi, de 9 h à 18 h (heure de Paris en hiver)
@@ -18,7 +18,9 @@
     "SMTP_USER": "contact@nexolv.fr",
     "PAY_ESSENTIEL": "https://buy.stripe.com/28E3cufo3aDBf3RemY53O00",
     "PAY_PRO": "https://buy.stripe.com/9B63cu1xdcLJ3l95Qs53O01",
-    "PAY_SANS_APPORT": "https://buy.stripe.com/6oU28q5Nt6nl7Bpfr253O02"
+    "PAY_SANS_APPORT": "https://buy.stripe.com/6oU28q5Nt6nl7Bpfr253O02",
+      "PAY_ABONNEMENT": "https://buy.stripe.com/cNi6oG2BhcLJaNBa6I53O03",
+      "PAY_ABONNEMENT_ID": "plink_1UdrwrAa79J9vSnG6THTyRGp"
   },
   "observability": { "enabled": true }
 }
