@@ -10,24 +10,50 @@ export default async (req) => {
   try {
     // ---------- routes publiques ----------
     if (route === "login") {
-      const { password } = await req.json().catch(() => ({}));
+      const { password, email, code } = await req.json().catch(() => ({}));
       if (!C.env("APP_PASSWORD")) return C.json({ error: "APP_PASSWORD n'est pas défini dans les secrets Cloudflare." }, 500);
-      if (!C.checkPassword(password)) return C.json({ error: "Mot de passe incorrect" }, 401);
+      const ip = req.headers.get("cf-connecting-ip") || "?";
+      if (await C.tropDEssais(ip)) return C.json({ error: "Trop d'essais. Réessayez dans 15 minutes." }, 429);
+      const mail = String(email || "").trim().toLowerCase();
+      if (mail) { // client abonné : e-mail + code d'accès
+        const a = Object.values(await C.loadAccounts()).find((x) => x.email === mail);
+        if (a && a.code_hash === C.codeHash(code || password || "")) {
+          if (!a.actif) return C.json({ error: "Votre abonnement n'est plus actif. Réabonnez-vous pour retrouver l'accès." }, 403);
+          return C.json({ token: C.clientToken(a) });
+        }
+        await C.essaiRate(ip);
+        return C.json({ error: "E-mail ou code d'accès incorrect" }, 401);
+      }
+      if (!C.checkPassword(password || code)) { await C.essaiRate(ip); return C.json({ error: "Mot de passe incorrect" }, 401); }
       return C.json({ token: C.sessionToken() });
     }
     if (route === "stop") {
       const u = new URL(req.url);
       const e = (u.searchParams.get("e") || "").trim().toLowerCase();
-      if (!e || u.searchParams.get("s") !== C.stopSig(e)) return C.page("<p>Lien invalide.</p>", 400);
+      const a = (u.searchParams.get("a") || "admin").replace(/[^a-z0-9]/g, "") || "admin";
+      if (!e || u.searchParams.get("s") !== C.stopSig(e, a)) return C.page("<p>Lien invalide.</p>", 400);
+      return C.runAs({ id: a }, () => stop(e));
+    }
+
+    const acct = await C.authentifier(req);
+    if (!acct) return C.json({ error: "Session expirée, reconnectez-vous." }, 401);
+    return await C.runAs(acct, () => prive(req, route));
+  } catch (e) {
+    return C.json({ error: e.message || String(e) }, 500);
+  }
+};
+
+async function stop(e) {
       const db = await C.loadDB();
       if (!db.blacklist.includes(e)) db.blacklist.push(e);
       for (const p of Object.values(db.prospects)) if ((p.email || "").toLowerCase() === e) { p.statut = "stop"; p.opposition = 1; }
       await C.saveDB(db);
       return C.page(`<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Désinscription</title>
 <body style="font-family:sans-serif;text-align:center;padding:60px"><h2>C'est noté.</h2><p>${e.replace(/[<>&"]/g, "")} ne recevra plus aucun message de notre part.</p></body>`);
-    }
+}
 
-    if (!C.isAuthed(req)) return C.json({ error: "Session expirée, reconnectez-vous." }, 401);
+async function prive(req, route) {
+  try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const db = await C.loadDB();
     const cfg = C.cfgOf(db);
@@ -41,10 +67,39 @@ export default async (req) => {
           envois: db.envois.slice(-200).reverse(),
           cles: { google: !!C.env("GOOGLE_API_KEY"), pappers: !!C.env("PAPPERS_API_KEY"), brevo: C.envoiPret(), smtp: C.smtpPret() },
           statuts: C.STATUTS, base,
+          compte: C.isAdmin() ? { role: "admin" } : { role: "client", email: C.compte().email },
+          usage: C.usageOf(db), quotas: C.isAdmin() ? null : C.QUOTAS,
+          smtp: { host: db.smtp.host || "", port: db.smtp.port || 465, user: db.smtp.user || "", pass: !!db.smtp.pass },
+          clients: C.isAdmin() ? Object.values(await C.loadAccounts()).map(({ code_hash, ...a }) => a) : undefined,
         });
+
+      case "smtp": { // boîte d'envoi du client
+        if (C.isAdmin()) return C.json({ error: "Le compte agence envoie via contact@nexolv.fr (secrets Cloudflare)." }, 400);
+        const s = body.smtp || {};
+        db.smtp = {
+          host: String(s.host || "").trim().slice(0, 200), port: Number(s.port) || 465,
+          user: String(s.user || "").trim().slice(0, 200), pass: s.pass ? C.chiffrer(String(s.pass)) : db.smtp.pass || "",
+        };
+        await C.saveDB(db);
+        return C.json({ ok: true, smtp: { ...db.smtp, pass: !!db.smtp.pass } });
+      }
+
+      case "client": { // admin : couper / rétablir l'accès, renouveler le code
+        if (!C.isAdmin()) return C.json({ error: "Réservé à l'agence" }, 403);
+        const accts = await C.loadAccounts();
+        const a = accts[body.id];
+        if (!a) return C.json({ error: "Client introuvable" }, 404);
+        let code = "";
+        if (body.action === "couper") { a.actif = false; a.gen = (a.gen || 0) + 1; a.manuel = "coupe"; }
+        if (body.action === "retablir") { a.actif = true; a.manuel = "retabli"; }
+        if (body.action === "code") { code = C.nouveauCode(); a.code_hash = C.codeHash(code); a.gen = (a.gen || 0) + 1; }
+        await C.saveAccounts(accts);
+        return C.json({ ok: true, code });
+      }
 
       case "search": { // une recherche "métier ville"
         const { metier, ville, pages = 2, reseaux = true, noteMin = 0 } = body;
+        C.consommer(db, "google", Math.min(3, Number(pages) || 1));
         const places = await C.placesSearch(`${metier} ${ville}`, pages);
         let sansSite = 0; const nouveaux = [];
         for (const pl of places) {
@@ -62,6 +117,7 @@ export default async (req) => {
       }
 
       case "pappers": { // une page de 20 entreprises
+        C.consommer(db, "pappers", 1);
         const res = await C.pappersPage(body);
         const nouveaux = [];
         for (const e of res) {
@@ -78,6 +134,7 @@ export default async (req) => {
         if (!p) return C.json({ error: "introuvable" }, 404);
         let supprime = false;
         if (C.env("GOOGLE_API_KEY")) {
+          C.consommer(db, "google", 1);
           const res = await C.placesSearch(`${p.nom} ${p.ville || ""}`, 1);
           const g = res.map((pl) => C.placeToProspect(pl)).find((g) =>
             C.similarity(p.nom, g.nom) >= 0.7 && (!p.code_postal || g.code_postal === p.code_postal));
