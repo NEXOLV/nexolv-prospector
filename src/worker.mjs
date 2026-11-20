@@ -46,14 +46,29 @@ function init(env) {
   C.__setStore(d1Store(env.DB));
 }
 
+// En-têtes de sécurité ajoutés à toutes les réponses
+function securiser(res, demoPage) {
+  const r = new Response(res.body, res);
+  r.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
+  r.headers.set("x-content-type-options", "nosniff");
+  r.headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  r.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  if (!demoPage) r.headers.set("x-frame-options", "DENY");
+  return r;
+}
+
 export default {
   async fetch(req, env) {
     init(env);
     const { pathname } = new URL(req.url);
-    if (pathname === "/api/import" && req.method === "POST") return importer(req);
-    if (pathname.startsWith("/api/")) return api(req);
-    if (pathname.startsWith("/demo/")) return demo(req);
-    return env.ASSETS.fetch(req);
+    let res;
+    if (pathname === "/api/import" && req.method === "POST") res = await importer(req);
+    else if (pathname.startsWith("/api/")) res = await api(req);
+    else if (pathname.startsWith("/demo/")) res = await demo(req);
+    else if (pathname === "/abonnement") res = abonnement();
+    else if (pathname === "/bienvenue") res = await bienvenue(req);
+    else res = await env.ASSETS.fetch(req);
+    return securiser(res, pathname.startsWith("/demo/"));
   },
   async scheduled(event, env, ctx) {
     init(env);
@@ -81,4 +96,65 @@ async function importer(req) {
   if (d.auto) db.auto = { ...db.auto, ...d.auto };
   await C.saveDB(db);
   return C.json({ ok: true, prospects: Object.keys(db.prospects).length });
+}
+
+// ---------------------------------------------------------------------------
+// Abonnement à l'outil
+// /abonnement : redirige vers le lien de paiement Stripe (adresse stable pour les QR codes et la pub)
+// /bienvenue?session_id=… : retour de Stripe après paiement → création du compte et du code d'accès
+// ---------------------------------------------------------------------------
+function abonnement() {
+  const lien = C.env("PAY_ABONNEMENT");
+  if (!/^https:\/\/(buy|checkout)\.stripe\.com\//.test(lien)) return pageAbo("Bientôt disponible", "<p>L'abonnement n'est pas encore ouvert. Écrivez-nous à contact@nexolv.fr.</p>", 503);
+  return Response.redirect(lien, 302);
+}
+
+const escH = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function pageAbo(titre, corps, status = 200) {
+  return C.page(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escH(titre)} · NEXOLV Prospector</title><meta name="robots" content="noindex">
+<style>body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#14162b;color:#1d1f33;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+.box{background:#fff;border-radius:18px;padding:34px;max-width:480px;width:100%;box-shadow:0 20px 60px #0006}h1{margin:0 0 10px;font-size:24px}
+.code{font:700 30px/1.2 ui-monospace,Menlo,monospace;letter-spacing:3px;background:#f1f3ff;border:2px dashed #5b5bd6;border-radius:12px;padding:16px;text-align:center;margin:18px 0}
+.btn{display:block;text-align:center;background:#5b5bd6;color:#fff;text-decoration:none;padding:14px;border-radius:10px;font-weight:700;margin-top:18px}
+.note{color:#666;font-size:14px;line-height:1.5}</style></head><body><div class="box">
+<h1>${escH(titre)}</h1>${corps}</div></body></html>`, status);
+}
+
+async function bienvenue(req) {
+  const sid = new URL(req.url).searchParams.get("session_id") || "";
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sid)) return pageAbo("Lien invalide", "<p class=note>Ce lien de confirmation n'est pas valide.</p>", 400);
+  let s;
+  try { s = await C.stripeGet("checkout/sessions/" + sid); }
+  catch (e) { return pageAbo("Vérification impossible", `<p class=note>${escH(e.message)}</p><p class=note>Votre paiement n'est pas perdu : écrivez à contact@nexolv.fr.</p>`, 502); }
+  const lien = C.env("PAY_ABONNEMENT_ID");
+  if (s.status !== "complete" || !s.subscription || (lien && s.payment_link !== lien))
+    return pageAbo("Paiement non finalisé", "<p class=note>Nous n'avons pas trouvé d'abonnement validé pour ce paiement.</p>", 402);
+  const email = String(s.customer_details?.email || s.customer_email || "").trim().toLowerCase();
+  const accts = await C.loadAccounts();
+  let a = Object.values(accts).find((x) => x.stripe_sub === s.subscription);
+  const url = C.env("URL") || new URL(req.url).origin;
+  if (a && a.code_vu) {
+    return pageAbo("Votre compte est prêt", `<p class=note>Votre code d'accès a déjà été affiché et envoyé à <b>${escH(a.email)}</b>.</p><a class=btn href="${escH(url)}">Ouvrir NEXOLV Prospector</a>`);
+  }
+  const code = C.nouveauCode();
+  if (!a) {
+    a = Object.values(accts).find((x) => x.email === email); // réabonnement
+    if (!a) { const id = crypto.randomUUID().replace(/-/g, "").slice(0, 12); a = accts[id] = { id, email, cree: new Date().toISOString(), gen: 0 }; }
+  }
+  Object.assign(a, { stripe_sub: s.subscription, stripe_customer: s.customer || "", actif: true, statut_stripe: "active", manuel: "", code_hash: C.codeHash(code), code_vu: true, gen: (a.gen || 0) + 1 });
+  await C.saveAccounts(accts);
+  let envoye = true;
+  try {
+    await C.mailSysteme(email, {
+      sujet: "Votre accès à NEXOLV Prospector",
+      texte: `Bonjour,\n\nMerci pour votre abonnement à NEXOLV Prospector.\n\nAdresse : ${url}\nE-mail : ${email}\nCode d'accès : ${code}\n\nGardez ce code précieusement. Pour toute question : contact@nexolv.fr\n\nL'équipe NEXOLV`,
+      html: `<p>Bonjour,</p><p>Merci pour votre abonnement à <b>NEXOLV Prospector</b>.</p><p>Adresse : <a href="${escH(url)}">${escH(url)}</a><br>E-mail : <b>${escH(email)}</b><br>Code d'accès : <b style="font-size:20px;letter-spacing:2px">${code}</b></p><p>Gardez ce code précieusement. Pour toute question : contact@nexolv.fr</p><p>L'équipe NEXOLV</p>`,
+      stop: "",
+    });
+  } catch { envoye = false; }
+  return pageAbo("Bienvenue ! 🎉", `<p class=note>Votre abonnement est actif. Voici votre code d'accès personnel :</p>
+<div class=code>${code}</div>
+<p class=note>Connectez-vous avec votre e-mail <b>${escH(email)}</b> et ce code. ${envoye ? "Nous vous l'avons aussi envoyé par e-mail." : "<b>Notez-le bien</b> : l'e-mail de confirmation n'a pas pu partir."}</p>
+<a class=btn href="${escH(url)}">Ouvrir NEXOLV Prospector</a>`);
 }
