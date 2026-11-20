@@ -95,7 +95,7 @@ export function siteHtml(p, cfg, th, secteur) {
     tel ? ["Contact direct", "Un seul interlocuteur"] : null,
   ].filter(Boolean).slice(0, 3).map(([v, l]) => `<div><b>${v}</b><span>${esc(l)}</span></div>`).join("");
 
-  const offres = FORMULES.map((f) => ({ ...f, url: lienPaiement(f.k, p) }));
+  const offres = cfg.mode_client ? [] : FORMULES.map((f) => ({ ...f, url: lienPaiement(f.k, p) }));
   const payable = offres.some((f) => f.url);
   const contactUrl = cfg.reply_to ? `mailto:${cfg.reply_to}?subject=${encodeURIComponent("Site pour " + nom)}` : "#agence";
   const tarifs = offres.map((f, i) => `
@@ -204,9 +204,9 @@ footer{padding:34px 0 90px;font-size:13.5px;color:var(--mut);text-align:center;b
 .svc{border-right:0;border-bottom:1px solid var(--line)}.steps:before{display:none}.info{padding:32px 24px}section{padding:80px 0}.links .btn{display:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}.rv{opacity:1;transform:none}}
 </style></head><body>
-<div class="demo">Aperçu personnalisé conçu par ${esc(cfg.agence_nom)} pour ${esc(nom)} — maquette de démonstration. <a href="#tarifs">Le mettre en ligne</a></div>
+<div class="demo">Aperçu personnalisé conçu par ${esc(cfg.agence_nom)} pour ${esc(nom)} — maquette de démonstration. <a href="${cfg.mode_client ? "#agence" : "#tarifs"}">Le mettre en ligne</a></div>
 <header><div class="wrap nav"><a class="brand" href="#"><span class="mono">${esc(initiales)}</span>${esc(nom)}</a>
-<nav class="links"><a href="#services">Services</a><a href="#methode">Méthode</a><a href="#tarifs">Tarifs</a><a href="#contact">Contact</a>${tel ? `<a class="btn" href="tel:${esc(telL)}">${esc(tel)}</a>` : ""}</nav></div></header>
+<nav class="links"><a href="#services">Services</a><a href="#methode">Méthode</a>${cfg.mode_client ? "" : '<a href="#tarifs">Tarifs</a>'}<a href="#contact">Contact</a>${tel ? `<a class="btn" href="tel:${esc(telL)}">${esc(tel)}</a>` : ""}</nav></div></header>
 
 <main>
 <div class="hero"><div class="wrap">
@@ -246,13 +246,13 @@ footer{padding:34px 0 90px;font-size:13.5px;color:var(--mut);text-align:center;b
  <div class="map"><iframe loading="lazy" src="https://www.google.com/maps?q=${q}&output=embed" title="Plan d'accès"></iframe></div>
 </div></div></section>
 
-<section id="tarifs" class="alt"><div class="wrap">
+${cfg.mode_client ? "" : `<section id="tarifs" class="alt"><div class="wrap">
  <div class="head"><div><div class="eyebrow rv">Mettre ce site en ligne</div><h2 class="rv">Choisissez votre formule.</h2></div>
  <p class="rv">Proposition de ${esc(cfg.agence_nom)} pour ${esc(nom)}. ${payable ? "Paiement sécurisé en quelques clics, puis nous personnalisons le site avec vous et le mettons en ligne à votre nom." : "Répondez au mail ou appelez-nous : nous mettons le site en ligne à votre nom."}</p></div>
  <div class="plans">${tarifs}</div>
  <p class="promo rv">Offre de lancement : <b>-30 % sur la création</b> pour les premiers professionnels${payable ? " — code <b>LANCEMENT30</b> à saisir au paiement" : ""}. Option logo ou photos professionnelles : +150 € HT.</p>
  ${payable ? `<p class="secure">${svg("shield", 15)} Paiement sécurisé par Stripe · Carte bancaire, Apple Pay, Google Pay</p>` : ""}
-</div></section>
+</div></section>`}
 </main>
 
 <div class="final" id="agence"><div class="wrap">

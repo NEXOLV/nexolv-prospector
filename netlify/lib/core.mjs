@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import { emailHtml } from "./emailhtml.mjs";
 import { WorkerMailer } from "worker-mailer";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 export const env = (k) => process.env[k] || "";
 
@@ -12,13 +13,48 @@ let _store = null;
 const store = () => { if (!_store) throw new Error("Stockage non initialisé."); return _store; };
 export const __setStore = (s) => { _store = s; };
 
+export const storeGet = (k) => store().get(k);
+export const storeSet = (k, v) => store().setJSON(k, v);
+
+// ---------------------------------------------------------------------------
+// Comptes : "admin" (mot de passe APP_PASSWORD, données historiques "db") et clients abonnés ("db:<id>")
+// Le compte courant est porté par la requête (AsyncLocalStorage), jamais par une variable globale.
+// ---------------------------------------------------------------------------
+const ALS = new AsyncLocalStorage();
+export const runAs = (acct, fn) => ALS.run({ acct }, fn);
+const ctx = () => ALS.getStore() || { acct: { id: "admin" } };
+export const compte = () => ctx().acct || { id: "admin" };
+export const isAdmin = () => compte().id === "admin";
+const dbKey = () => (isAdmin() ? "db" : "db:" + compte().id);
+
 export async function loadDB() {
-  const d = (await store().get("db", { type: "json" })) || {};
-  return { prospects: {}, blacklist: [], envois: [], config: {}, auto: { idx: 0, lastSearchDay: "" }, ...d };
+  const d = (await store().get(dbKey())) || {};
+  const db = { prospects: {}, blacklist: [], envois: [], config: {}, auto: { idx: 0, lastSearchDay: "" }, usage: {}, smtp: {}, ...d };
+  ctx().db = db;
+  return db;
 }
 export async function saveDB(db) {
   if (db.envois.length > 5000) db.envois = db.envois.slice(-5000);
-  await store().setJSON("db", db);
+  await store().setJSON(dbKey(), db);
+}
+
+export const loadAccounts = async () => (await store().get("accounts")) || {};
+export const saveAccounts = (a) => store().setJSON("accounts", a);
+
+// Quotas mensuels des clients (l'admin n'a pas de limite)
+export const QUOTAS = { google: Number(env("QUOTA_GOOGLE") || 300), pappers: Number(env("QUOTA_PAPPERS") || 20) };
+const moisCourant = () => new Date().toISOString().slice(0, 7);
+export function usageOf(db) {
+  if (!db.usage || db.usage.mois !== moisCourant()) db.usage = { mois: moisCourant(), google: 0, pappers: 0 };
+  return db.usage;
+}
+export function consommer(db, type, n = 1) {
+  const u = usageOf(db);
+  if (!isAdmin() && u[type] + n > QUOTAS[type]) {
+    const lib = type === "google" ? "recherches Google" : "pages Pappers";
+    throw new Error(`Quota mensuel atteint (${QUOTAS[type]} ${lib}). Il se renouvelle le 1er du mois.`);
+  }
+  u[type] += n;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +98,11 @@ export const DEFAULT_CONFIG = {
   auto_envoi: false,
   auto_envois_par_heure: 3,
 };
-export const cfgOf = (db) => ({ ...DEFAULT_CONFIG, ...(db.config || {}) });
+const CONFIG_CLIENT = {
+  agence_nom: "", expediteur_nom: "", expediteur_email: "", reply_to: "", signature_tel: "", signature_site: "",
+  signature: "", auto_villes: "", mode_client: true,
+};
+export const cfgOf = (db) => ({ ...DEFAULT_CONFIG, ...(isAdmin() ? {} : { ...CONFIG_CLIENT, expediteur_email: compte().email || "", reply_to: compte().email || "" }), ...(db.config || {}), ...(isAdmin() ? {} : { mode_client: true }) });
 
 export const STATUTS = ["nouveau", "en_ligne", "envoye", "repondu", "client", "pas_interesse", "stop"];
 
@@ -73,12 +113,55 @@ const secret = () => env("APP_PASSWORD") || crypto.randomBytes(16).toString("hex
 export const sessionToken = () => crypto.createHmac("sha256", secret()).update("nexolv-session-v1").digest("hex");
 export const isAuthed = (req) =>
   !!env("APP_PASSWORD") && (req.headers.get("authorization") || "") === "Bearer " + sessionToken();
+const hmac = (m) => crypto.createHmac("sha256", secret()).update(m).digest("hex");
+const egal = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+// Jeton client : c.<id>.<gen>.<signature> (gen change quand le code est renouvelé ou l'accès coupé)
+export const clientToken = (a) => `c.${a.id}.${a.gen || 0}.${hmac(`c:${a.id}:${a.gen || 0}`).slice(0, 40)}`;
+export const codeHash = (code) => hmac("code:" + String(code).trim().toUpperCase());
+export function nouveauCode() {
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const b = crypto.randomBytes(10);
+  return Array.from(b, (x) => A[x % A.length]).join("").replace(/(.{5})(.{5})/, "$1-$2");
+}
+// Renvoie le compte connecté ({ id: "admin" } ou le client actif), sinon null
+export async function authentifier(req) {
+  const h = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
+  if (!env("APP_PASSWORD") || !h) return null;
+  if (egal(h, sessionToken())) return { id: "admin" };
+  const m = /^c\.([a-z0-9]+)\.(\d+)\.([a-f0-9]{40})$/.exec(h);
+  if (!m) return null;
+  const a = (await loadAccounts())[m[1]];
+  if (!a || !a.actif || String(a.gen || 0) !== m[2] || !egal(m[3], hmac(`c:${a.id}:${a.gen || 0}`).slice(0, 40))) return null;
+  return a;
+}
+// Anti force brute : 8 essais ratés par adresse IP sur 15 minutes
+export async function tropDEssais(ip) {
+  const r = (await store().get("rl:" + ip)) || {};
+  return r.t && Date.now() - r.t < 15 * 60e3 && r.n >= 8;
+}
+export async function essaiRate(ip) {
+  const r = (await store().get("rl:" + ip)) || {};
+  const frais = r.t && Date.now() - r.t < 15 * 60e3;
+  await store().setJSON("rl:" + ip, { n: frais ? r.n + 1 : 1, t: frais ? r.t : Date.now() });
+}
 export const checkPassword = (pw) => {
   const a = Buffer.from(String(pw || "")), b = Buffer.from(env("APP_PASSWORD"));
   return b.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
 };
-export const stopSig = (email) =>
-  crypto.createHmac("sha256", secret()).update("stop:" + email.trim().toLowerCase()).digest("hex").slice(0, 20);
+export const stopSig = (email, acct = compte().id) =>
+  crypto.createHmac("sha256", secret()).update((acct === "admin" ? "" : acct + ":") + "stop:" + email.trim().toLowerCase()).digest("hex").slice(0, 20);
+
+// Chiffrement des mots de passe SMTP des clients (AES-GCM, clé dérivée du secret de l'appli)
+const cleChiffre = () => crypto.createHash("sha256").update("smtp-enc:" + secret()).digest();
+export function chiffrer(txt) {
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", cleChiffre(), iv);
+  const ct = Buffer.concat([c.update(String(txt), "utf8"), c.final()]);
+  return [iv, c.getAuthTag(), ct].map((b) => b.toString("base64")).join(".");
+}
+export function dechiffrer(s) {
+  const [iv, tag, ct] = String(s || "").split(".").map((x) => Buffer.from(x, "base64"));
+  const d = crypto.createDecipheriv("aes-256-gcm", cleChiffre(), iv); d.setAuthTag(tag);
+  return Buffer.concat([d.update(ct), d.final()]).toString("utf8");
+}
 
 // ---------------------------------------------------------------------------
 // Outils texte
@@ -265,7 +348,7 @@ export async function pappersPage({ departement, code_postal, code_naf, date_cre
     api_token: key, par_page, page, entreprise_cessee: "false", departement, code_postal, code_naf, date_creation_min,
     chiffre_affaires_min: num(chiffre_affaires_min), chiffre_affaires_max: num(chiffre_affaires_max),
     resultat_min: num(resultat_min), resultat_max: num(resultat_max),
-    siege: (departement || code_postal) ? "true" : "", champs_supplementaires: avec_site ? "sites_internet" : "",
+    siege: (departement || code_postal) ? "true" : "", champs_supplementaires: avec_site && isAdmin() ? "sites_internet" : "",
   };
   for (const [k, v] of Object.entries(p)) if (v) u.searchParams.set(k, v);
   const r = await fetch(u);
@@ -324,7 +407,7 @@ export const baseUrl = (req) => env("URL") || (req ? new URL(req.url).origin : "
 
 export function publierDemo(db, p, base) {
   p.site_slug = demoSlug(db, p);
-  p.site_url = `${base}/demo/${p.site_slug}`;
+  p.site_url = `${base}/demo/${isAdmin() ? "" : compte().id + "/"}${p.site_slug}`;
   if (["nouveau", "", undefined].includes(p.statut)) p.statut = "en_ligne";
 }
 
@@ -368,7 +451,7 @@ export function renderEmail(p, cfg, base) {
   };
   const sujet = fill(cfg.email_sujet || DEFAULT_SUJET, v);
   const corps = fill(cfg.email_corps || DEFAULT_CORPS, v).trim();
-  const stop = p.email ? `${base}/api/stop?e=${encodeURIComponent(p.email)}&s=${stopSig(p.email)}` : "";
+  const stop = p.email ? `${base}/api/stop?e=${encodeURIComponent(p.email)}&s=${stopSig(p.email)}${isAdmin() ? "" : "&a=" + compte().id}` : "";
   const mentions = `—\n${cfg.agence_nom} · ${cfg.expediteur_email}\nVos coordonnées professionnelles proviennent de sources publiques (fiche Google, registre des entreprises) et ne sont utilisées que pour cette proposition.\nPour ne plus recevoir de message : ${stop || "répondez « STOP »"}`;
   const texte = `${corps}\n\n${mentions}`;
   const html = emailHtml({ corps, v, cfg, stop });
@@ -394,16 +477,21 @@ export async function brevoSend(cfg, to, { sujet, texte, html, stop }) {
 }
 
 // Envoi par la boîte mail de l'agence (SMTP OVH) — prioritaire sur Brevo
-export const smtpPret = () => !!env("SMTP_PASSWORD");
-export const envoiPret = () => smtpPret() || !!env("BREVO_API_KEY");
+const smtpClient = () => { const s = ctx().db?.smtp || {}; return s.host && s.user && s.pass ? s : null; };
+export const smtpPret = () => (isAdmin() ? !!env("SMTP_PASSWORD") : !!smtpClient());
+export const envoiPret = () => smtpPret() || (isAdmin() && !!env("BREVO_API_KEY"));
 export async function smtpSend(cfg, to, { sujet, texte, html, stop }) {
-  const user = env("SMTP_USER") || cfg.expediteur_email;
-  const port = Number(env("SMTP_PORT") || 465);
+  const sc = isAdmin() ? null : smtpClient();
+  if (!isAdmin() && !sc) throw new Error("Renseignez votre boîte mail d'envoi dans Réglages → Envoi des e-mails.");
+  const user = sc ? sc.user : env("SMTP_USER") || cfg.expediteur_email;
+  const port = Number(sc ? sc.port || 465 : env("SMTP_PORT") || 465);
+  const host = sc ? sc.host : env("SMTP_HOST") || "smtp.mail.ovh.net";
+  const password = sc ? dechiffrer(sc.pass) : env("SMTP_PASSWORD");
   const unsub = [stop && `<${stop}>`, `<mailto:${cfg.reply_to || user}?subject=STOP>`].filter(Boolean).join(", ");
   await WorkerMailer.send(
-    { host: env("SMTP_HOST") || "smtp.mail.ovh.net", port, secure: port === 465, startTls: port !== 465,
-      credentials: { username: user, password: env("SMTP_PASSWORD") }, authType: ["plain", "login"],
-      name: "nexolv.fr", socketTimeoutMs: 15000, responseTimeoutMs: 15000 },
+    { host, port, secure: port === 465, startTls: port !== 465,
+      credentials: { username: user, password }, authType: ["plain", "login"],
+      name: user.split("@")[1] || "nexolv.fr", socketTimeoutMs: 15000, responseTimeoutMs: 15000 },
     { from: { name: cfg.expediteur_nom || cfg.agence_nom || "", email: user }, to, reply: cfg.reply_to || user,
       subject: sujet, text: texte, html,
       headers: { "List-Unsubscribe": unsub, ...(stop ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}) } },
@@ -411,9 +499,11 @@ export async function smtpSend(cfg, to, { sujet, texte, html, stop }) {
   return true;
 }
 export async function mailSend(cfg, to, msg) {
-  if (smtpPret()) return smtpSend(cfg, to, msg);
+  if (smtpPret() || !isAdmin()) return smtpSend(cfg, to, msg);
   return brevoSend(cfg, to, msg);
 }
+// Mail système (codes d'accès) : toujours depuis la boîte de l'agence
+export const mailSysteme = (to, msg) => runAs({ id: "admin" }, () => smtpSend({ ...DEFAULT_CONFIG, expediteur_nom: "NEXOLV Prospector" }, to, msg));
 
 export async function envoyerProspect(db, p, cfg, base) {
   const msg = renderEmail(p, cfg, base);
@@ -478,6 +568,36 @@ footer{background:#0b0b14;color:#aaa;padding:30px 6vw;font-size:14px;text-align:
 <footer id="agence"><p>Ce site est une proposition de <b>${esc(cfg.agence_nom)}</b>. Il peut être mis en ligne à votre nom, avec votre nom de domaine, vos photos et vos textes.</p>
 <p style="margin-top:8px">📞 ${esc(cfg.signature_tel)} · ✉️ <a href="mailto:${esc(cfg.reply_to)}">${esc(cfg.reply_to)}</a> · <a href="${esc(cfg.signature_site)}">${esc(cfg.signature_site)}</a></p></footer>
 ${tel ? `<a class="btn sticky" href="tel:${esc(telL)}">📞 Appeler</a>` : ""}</body></html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Stripe : abonnement à l'outil (clé STRIPE_SECRET_KEY, en lecture seule suffit)
+// ---------------------------------------------------------------------------
+export async function stripeGet(path) {
+  const k = env("STRIPE_SECRET_KEY");
+  if (!k) throw new Error("Clé Stripe manquante (secret STRIPE_SECRET_KEY sur Cloudflare).");
+  const r = await fetch("https://api.stripe.com/v1/" + path, { headers: { authorization: "Bearer " + k } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Stripe ${r.status} : ${j.error?.message || "erreur"}`);
+  return j;
+}
+const ABO_OK = ["active", "trialing", "past_due"];
+// Met à jour l'accès de chaque client selon l'état de son abonnement (sauf décision manuelle de l'agence)
+export async function synchroAbonnements() {
+  if (!env("STRIPE_SECRET_KEY")) return [];
+  const accts = await loadAccounts(); const log = [];
+  for (const a of Object.values(accts)) {
+    if (!a.stripe_sub || a.manuel) continue;
+    try {
+      const sub = await stripeGet("subscriptions/" + encodeURIComponent(a.stripe_sub));
+      const ok = ABO_OK.includes(sub.status);
+      if (a.actif && !ok) a.gen = (a.gen || 0) + 1;
+      a.actif = ok; a.statut_stripe = sub.status; a.verif = new Date().toISOString();
+      log.push(`${a.email} : ${sub.status}`);
+    } catch (e) { log.push(`${a.email} : ${e.message}`); }
+  }
+  await saveAccounts(accts);
+  return log;
 }
 
 export const json = (data, status = 200) =>
